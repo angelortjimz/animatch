@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearAnilistCache } from "@/api/anilist";
 import type { Anime, CommunityRecommendation, RelatedAnime } from "@/models/anime";
-import { anime, relation, reversed, selectedThree } from "./fixtures";
+import {
+  anime,
+  animeRelation,
+  communityRecommendation,
+  relation,
+  reversed,
+  selectedThree,
+} from "./fixtures";
 import { recommend } from "./recommend";
 
 const api = vi.hoisted(() => ({
@@ -43,7 +50,13 @@ afterEach(() => {
 
 /** Registers three selections whose connections point at the given candidates. */
 function scenario(
-  candidates: { id: number; isAdult?: boolean; omit?: boolean; popularity?: number }[],
+  candidates: {
+    id: number;
+    isAdult?: boolean;
+    omit?: boolean;
+    popularity?: number;
+    predecessorId?: number;
+  }[],
 ) {
   const selected = selectedThree();
   selected.forEach((source) => {
@@ -60,6 +73,7 @@ function scenario(
       anime(candidate.id, {
         isAdult: candidate.isAdult ?? false,
         popularity: candidate.popularity ?? 100,
+        relations: candidate.predecessorId ? [animeRelation(candidate.predecessorId)] : [],
       }),
     );
   });
@@ -130,6 +144,43 @@ describe("recommend", () => {
   it("never recommends one of the selections", async () => {
     const selected = scenario([{ id: 1 }, { id: 10 }]);
     expect(asRecommendation(await recommend(selected)).results[0]?.anime.id).not.toBe(1);
+  });
+
+  it("drops a sequel whose prequel is not one of the picks", async () => {
+    // Shippuden follows Naruto (20), which the user never selected.
+    const selected = scenario([{ id: 10 }, { id: 11, predecessorId: 20 }]);
+    const results = asRecommendation(await recommend(selected)).results;
+    expect(results.map((item) => item.anime.id)).toEqual([10]);
+  });
+
+  it("drops a sequel that arrives as a community recommendation", async () => {
+    const selected = scenario([{ id: 10 }, { id: 11, predecessorId: 20 }]);
+    // The path the report described: no franchise link, only a fan suggestion.
+    selected.forEach((source) => {
+      api.connections.set(source.id, {
+        relations: [],
+        recommendations: [
+          communityRecommendation(source.id, 10),
+          communityRecommendation(source.id, 11),
+        ],
+      });
+    });
+    const results = asRecommendation(await recommend(selected)).results;
+    expect(results.map((item) => item.anime.id)).toEqual([10]);
+  });
+
+  it("keeps a sequel once its prequel is one of the picks", async () => {
+    const selected = scenario([{ id: 10 }, { id: 11, predecessorId: 2 }]);
+    const results = asRecommendation(await recommend(selected)).results;
+    expect(results.map((item) => item.anime.id)).toContain(11);
+  });
+
+  it("reports no match when every candidate continues an unwatched show", async () => {
+    const selected = scenario([
+      { id: 10, predecessorId: 20 },
+      { id: 11, predecessorId: 30 },
+    ]);
+    expect(await recommend(selected)).toEqual({ kind: "no-match" });
   });
 
   it("picks the higher scoring candidate", async () => {

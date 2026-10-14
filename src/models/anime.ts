@@ -14,6 +14,15 @@ export interface Anime extends AnimeSearchResult {
   mainStudios: string[];
   popularity: number;
   isAdult: boolean;
+  relations: AnimeRelation[];
+}
+
+export interface AnimeRelation {
+  id: number;
+  title: string;
+  mediaType: string;
+  format: string;
+  relationType: string;
 }
 
 export interface RelatedAnime {

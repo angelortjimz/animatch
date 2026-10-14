@@ -51,6 +51,7 @@ in-memory.
 - Never expose raw API errors to users; show friendly messages instead.
 - No backend, database, auth, or LLM — the recommender stays a deterministic
   frontend.
+- Avoid explanatory comments.
 
 ## Code style
 
@@ -68,7 +69,6 @@ in-memory.
   configurable, not hardcoded.
 - Use the `@` alias for cross-directory `src/` imports; same-directory
   imports may stay relative.
-- Avoid code comments.
 - No `console.log` in `src/`; surface state through the `UiState` union.
 - Never weaken a `tsconfig.json` strict flag or silence an ESLint rule to
   make a build pass. Fix the code, or scope the rule off in

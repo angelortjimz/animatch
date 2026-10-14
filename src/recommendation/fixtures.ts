@@ -1,4 +1,4 @@
-import type { Anime, CommunityRecommendation, RelatedAnime } from "@/models/anime";
+import type { Anime, AnimeRelation, CommunityRecommendation, RelatedAnime } from "@/models/anime";
 
 export const anime = (id: number, overrides: Partial<Anime> = {}): Anime => ({
   id,
@@ -13,6 +13,19 @@ export const anime = (id: number, overrides: Partial<Anime> = {}): Anime => ({
   mainStudios: ["Studio A"],
   popularity: 100,
   isAdult: false,
+  relations: [],
+  ...overrides,
+});
+
+export const animeRelation = (
+  id: number,
+  overrides: Partial<AnimeRelation> = {},
+): AnimeRelation => ({
+  id,
+  title: `Anime ${id}`,
+  mediaType: "anime",
+  format: "TV",
+  relationType: "PREQUEL",
   ...overrides,
 });
 

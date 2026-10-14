@@ -16,6 +16,13 @@ export function relationWeight(relationType: string): number | undefined {
 export const COMMUNITY_RELATION_TYPE = "COMMUNITY";
 export const COMMUNITY_WEIGHT = 0.5;
 
+export const PREREQUISITE_RELATION_TYPES = ["PREQUEL", "PARENT"] as const;
+export const PREREQUISITE_MEDIA_FORMATS = ["TV", "TV_SHORT"] as const;
+export const CONTINUATION_RELATION_TYPES = ["SEQUEL", "PARENT"] as const;
+export function includesRelationType(types: readonly string[], relationType: string): boolean {
+  return types.includes(relationType);
+}
+
 export const SCORING_WEIGHTS = {
   relation: 0.4,
   metadata: 0.6,

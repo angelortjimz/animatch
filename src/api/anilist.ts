@@ -1,6 +1,7 @@
 import type {
   Anime,
   AnimeConnections,
+  AnimeRelation,
   AnimeSearchResult,
   CommunityRecommendation,
   RelatedAnime,
@@ -152,6 +153,12 @@ const BATCH_QUERY = `
         coverImage { large medium }
         isAdult
         popularity
+        relations {
+          edges {
+            relationType
+            node { id title { romaji english native } type format }
+          }
+        }
       }
     }
   }
@@ -221,6 +228,19 @@ function genres(media: AnilistMedia): string[] {
   return (media.genres ?? []).flatMap((genre) => (genre?.trim() ? [genre] : []));
 }
 
+function animeRelations(media: AnilistMedia): AnimeRelation[] {
+  return (media.relations?.edges ?? []).flatMap((edge) => {
+    const node = edge?.node;
+    const id = node?.id;
+    const relationType = edge?.relationType?.trim();
+    const title = node ? titleOf(node) : null;
+    const mediaType = node ? mediaTypeLabel(node) : null;
+    const format = node?.format?.trim();
+    if (!node || !isId(id) || !title || !mediaType || !relationType || !format) return [];
+    return [{ id, title, mediaType, format, relationType }];
+  });
+}
+
 function mediaTypeLabel(media: AnilistMedia): string | null {
   return media.type === "ANIME" ? "anime" : media.type === "MANGA" ? "manga" : null;
 }
@@ -251,6 +271,7 @@ export function normalizeAnime(media: AnilistMedia): Anime {
     mainStudios: mainStudios(media),
     popularity: media.popularity ?? 0,
     isAdult: media.isAdult ?? false,
+    relations: animeRelations(media),
   };
 }
 

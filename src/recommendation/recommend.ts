@@ -2,6 +2,7 @@ import { getAnimeBatch, getAnimeConnections } from "@/api/anilist";
 import type { Anime, Candidate, CandidateSeed, RecommendationResult } from "@/models/anime";
 import { buildCandidateSeeds } from "./candidates";
 import { REQUIRED_SELECTIONS } from "./config";
+import { passesPrerequisiteGate } from "./prerequisites";
 import { generateReasons } from "./reasons";
 import { rankCandidates, scoreCandidate } from "./scoring";
 
@@ -11,7 +12,6 @@ async function hydrateCandidates(seeds: CandidateSeed[], selected: Anime[]): Pro
   const byId = new Map(anime.map((item) => [item.id, item]));
   return seeds.flatMap((seed) => {
     const found = byId.get(seed.id);
-    // A single unavailable or adult candidate should not invalidate an otherwise useful recommendation.
     return found && !found.isAdult ? [scoreCandidate(seed, found, selected)] : [];
   });
 }
@@ -28,7 +28,12 @@ export async function recommend(selected: Anime[]): Promise<RecommendationResult
     connections.map((connection) => connection.recommendations),
   );
   if (seeds.length === 0) return { kind: "no-match" };
-  const results = rankCandidates(await hydrateCandidates(seeds, selected)).map((candidate) => ({
+  const selectedRelations = connections.map((connection) => connection.relations);
+  const hydrated = await hydrateCandidates(seeds, selected);
+  const eligible = hydrated.filter((candidate) =>
+    passesPrerequisiteGate(candidate.anime, selected, selectedRelations),
+  );
+  const results = rankCandidates(eligible).map((candidate) => ({
     anime: candidate.anime,
     reasons: generateReasons(candidate, selected),
     basedOn: selected,

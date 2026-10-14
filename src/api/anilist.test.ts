@@ -159,6 +159,42 @@ describe("AniList normalization", () => {
     expect(candidate.mainStudios).toEqual(["Sunrise"]);
   });
 
+  it("normalizes every relation edge, keeping manga links for the policy layer", () => {
+    const candidate = normalizeAnime({
+      ...media,
+      relations: {
+        edges: [
+          {
+            relationType: "PREQUEL",
+            node: { id: 20, type: "ANIME", format: "TV", title: { english: "Naruto" } },
+          },
+          {
+            relationType: "ADAPTATION",
+            node: { id: 30011, type: "MANGA", format: "MANGA", title: { romaji: "Naruto" } },
+          },
+          { relationType: "OTHER", node: { id: 5, type: "ANIME" } },
+          { relationType: "SIDE_STORY", node: null },
+          null,
+        ],
+      },
+    });
+    expect(candidate.relations).toEqual([
+      { id: 20, title: "Naruto", mediaType: "anime", format: "TV", relationType: "PREQUEL" },
+      {
+        id: 30011,
+        title: "Naruto",
+        mediaType: "manga",
+        format: "MANGA",
+        relationType: "ADAPTATION",
+      },
+    ]);
+  });
+
+  it("reports no relations when AniList sends none", () => {
+    expect(normalizeAnime(media).relations).toEqual([]);
+    expect(normalizeAnime({ ...media, relations: { edges: [] } }).relations).toEqual([]);
+  });
+
   it("throws a typed error when required fields are missing", () => {
     expect(() => normalizeSearchResult({ ...media, id: undefined })).toThrow(AnilistError);
     expect(() => normalizeSearchResult({ ...media, title: {} })).toThrow(AnilistError);

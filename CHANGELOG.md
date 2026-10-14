@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A prerequisite gate on candidates: a title that follows another
+  series — a sequel, a later season, or a film continuation such as
+  _Cowboy Bebop: The Movie_ or _The End of Evangelion_ — is only
+  recommended when the series it follows is one of the three picks.
+  Candidates now carry their own AniList relations, and only a
+  `PREQUEL`/`PARENT` edge to a **TV series** counts as required
+  viewing, so extras tagged as prequels (ONE PIECE's prequel ONA,
+  _Attack on Titan: No Regrets_, _Tokyo Ghoul: [PINTO]_,
+  _JUJUTSU KAISEN 0_) leave the title recommendable
+- Tests for the gate: unmet and met predecessors, OVA/ONA/movie and
+  manga predecessors, manga continuations, an unmirrored relation
+  edge, and sequel candidates arriving by community recommendation
+
 - A direct AniList link on the result title plus a quiet "View on
   AniList" link on the card, both opening in a new tab with
   `rel="noopener noreferrer"`
@@ -228,6 +241,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- A sequel could be recommended before its prequel. Relation-based
+  candidates were already filtered to discovery types, but
+  `Media.recommendations` had no such filter and nothing downstream
+  knew a candidate's own relations, so _Naruto: Shippuden_ was offered
+  to users who never picked Naruto and _The End of Evangelion_ to
+  users who never picked _Neon Genesis Evangelion_
+- The candidate batch query now asks for each candidate's
+  `relations`, adding fields to an existing request rather than a
+  round trip
 - The re-roll queue no longer runs past its last entry. `handleReroll`
   incremented the cursor without a ceiling, and an out-of-range index fell
   back to the first result, so pressing "Seen it — show me another" past the
