@@ -14,7 +14,7 @@ function titlesById(selected: Anime[]): Map<number, string> {
 
 function connectedTitles(candidate: Candidate, titles: Map<number, string>): string[] {
   const connected = candidate.relations
-    .map((relation) => titles.get(relation.sourceId))
+    .map((relation) => (relation.sourceId === null ? undefined : titles.get(relation.sourceId)))
     .filter((title): title is string => title !== undefined);
   return [...new Set(connected)];
 }

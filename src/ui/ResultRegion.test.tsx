@@ -2,7 +2,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
-import type { Recommendation } from "@/models/anime";
+import type { Recommendation, RecommendationFilters } from "@/models/anime";
 import type { UiState } from "@/models/ui";
 import { anime } from "@/recommendation/fixtures";
 import { ResultRegion } from "./ResultRegion";
@@ -19,10 +19,15 @@ const recommendation = (id: number, overrides: Partial<Recommendation> = {}): Re
   ...overrides,
 });
 
-const recommended = (results: Recommendation[], index = 0): UiState => ({
+const recommended = (
+  results: Recommendation[],
+  index = 0,
+  filters?: Partial<RecommendationFilters>,
+): UiState => ({
   kind: "recommendation",
   results,
   index,
+  filters: { formats: [], maxEpisodes: null, ...filters },
 });
 
 const yurei = recommendation(7, {
@@ -150,6 +155,32 @@ describe("ResultRegion AniList links", () => {
     renderRegion(recommended([yurei]));
 
     expect(screen.getByRole("heading", { name: "Yurei Deco" })).toBeDefined();
+  });
+});
+
+describe("ResultRegion active filters", () => {
+  it("stays silent when nothing was narrowed", () => {
+    renderRegion(recommended([yurei]));
+    expect(screen.queryByText(/Matched to your filters/)).toBeNull();
+  });
+
+  it("names the filters the shown result was scored against", () => {
+    renderRegion(recommended([yurei], 0, { formats: ["MOVIE"], maxEpisodes: 24 }));
+    expect(screen.getByText("Matched to your filters: Movies, up to 24 episodes")).toBeDefined();
+  });
+
+  it("still names the filters on a stale card, because they are what it was scored with", () => {
+    renderRegion(recommended([yurei], 0, { formats: ["OVA"], maxEpisodes: null }), {
+      isStale: true,
+      onUndo: vi.fn(),
+    });
+    expect(screen.getByText("Matched to your filters: OVAs, any length")).toBeDefined();
+  });
+
+  it("lets the queue counter carry a short result without extra commentary", () => {
+    const { container } = renderRegion(recommended([yurei], 0, { formats: ["MOVIE"] }));
+    expect(container.querySelector(".queue-position")).toBeNull();
+    expect(container.querySelector(".exhausted-note")?.textContent).toMatch(/last match/);
   });
 });
 

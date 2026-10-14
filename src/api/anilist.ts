@@ -1,10 +1,14 @@
-import type {
-  Anime,
-  AnimeConnections,
-  AnimeRelation,
-  AnimeSearchResult,
-  CommunityRecommendation,
-  RelatedAnime,
+import {
+  ANIME_FORMAT_LABELS,
+  isAnimeFormat,
+  type Anime,
+  type AnimeConnections,
+  type AnimeFormat,
+  type AnimeRelation,
+  type AnimeSearchResult,
+  type CommunityRecommendation,
+  type DiscoveryCandidate,
+  type RelatedAnime,
 } from "@/models/anime";
 
 const BASE_URL = "https://graphql.anilist.co";
@@ -164,13 +168,28 @@ const BATCH_QUERY = `
   }
 `;
 
-const FORMAT_LABELS: Readonly<Record<string, string>> = {
-  TV_SHORT: "TV Short",
-  MOVIE: "Movie",
-};
+const DISCOVERY_QUERY = `
+  query ($genres: [String], $formatIn: [MediaFormat], $idNotIn: [Int], $page: Int, $perPage: Int) {
+    Page(page: $page, perPage: $perPage) {
+      media(
+        genre_in: $genres
+        format_in: $formatIn
+        id_not_in: $idNotIn
+        type: ANIME
+        isAdult: false
+        sort: POPULARITY_DESC
+      ) {
+        id
+        format
+        episodes
+        popularity
+      }
+    }
+  }
+`;
 
-// AniList files MAL-style themes under "Theme-*" and "Setting-*" tag
-// categories (e.g. "Space" is a "Setting-Universe" tag).
+const FORMAT_LABELS: Readonly<Record<string, string>> = ANIME_FORMAT_LABELS;
+
 function isThemeCategory(category: string | null | undefined): boolean {
   return category?.startsWith("Theme-") === true || category?.startsWith("Setting-") === true;
 }
@@ -283,9 +302,10 @@ function toRelatedAnime(
   const id = node?.id;
   const title = node ? titleOf(node) : null;
   const mediaType = node ? mediaTypeLabel(node) : null;
+  const format = node?.format?.trim();
   const relationType = edge?.relationType?.trim() ?? null;
-  if (!node || !isId(id) || !title || !mediaType || !relationType) return null;
-  return { id, title, mediaType, sourceId, relationType };
+  if (!node || !isId(id) || !title || !mediaType || !format || !relationType) return null;
+  return { id, title, mediaType, format, sourceId, relationType };
 }
 
 function toCommunityRecommendation(
@@ -297,13 +317,31 @@ function toCommunityRecommendation(
   const id = media?.id;
   const title = media ? titleOf(media) : null;
   const mediaType = media ? mediaTypeLabel(media) : null;
-  if (!node || !media || !isId(id) || !title || !mediaType) return null;
+  const format = media?.format?.trim();
+  if (!node || !media || !isId(id) || !title || !mediaType || !format) return null;
   return {
     id,
     title,
     mediaType,
+    format,
     sourceId,
     rating: typeof node.rating === "number" && Number.isFinite(node.rating) ? node.rating : 0,
+  };
+}
+
+function toDiscoveryCandidate(media: AnilistMedia): DiscoveryCandidate | null {
+  const id = media.id;
+  if (!isId(id)) return null;
+  const format = media.format?.trim() ?? "";
+  const episodes = media.episodes;
+  return {
+    id,
+    format: isAnimeFormat(format) ? format : null,
+    episodes: typeof episodes === "number" && Number.isFinite(episodes) ? episodes : null,
+    popularity:
+      typeof media.popularity === "number" && Number.isFinite(media.popularity)
+        ? media.popularity
+        : 0,
   };
 }
 
@@ -378,11 +416,8 @@ async function fetchJson<T>(
   throw new AnilistError("We could not connect to AniList. Please try again.");
 }
 
-// One map holds every response type, so reads need a cast back to the caller's T.
 const cache = new Map<string, Promise<unknown>>();
 
-// A cached promise is bound to the creating call's AbortSignal, so abortable
-// callers bypass the cache rather than inherit someone else's abort.
 function cached<T>(key: string, load: () => Promise<T>, signal?: AbortSignal): Promise<T> {
   if (signal) return load();
   const current = cache.get(key) as Promise<T> | undefined;
@@ -458,6 +493,36 @@ export async function getAnimeBatch(ids: number[]): Promise<Anime[]> {
     anime.push(...media.map(normalizeAnime));
   }
   return anime;
+}
+
+export interface DiscoveryRequest {
+  genres: string[];
+  formats: AnimeFormat[];
+  excludeIds: number[];
+  page: number;
+  perPage: number;
+}
+
+export async function getDiscoveryCandidates(
+  request: DiscoveryRequest,
+): Promise<DiscoveryCandidate[]> {
+  if (request.genres.length === 0 || request.excludeIds.length === 0) return [];
+  const variables: Record<string, unknown> = {
+    genres: request.genres,
+    idNotIn: request.excludeIds,
+    page: request.page,
+    perPage: request.perPage,
+  };
+
+  if (request.formats.length > 0) variables.formatIn = request.formats;
+  const response = await fetchJson<AnilistPageResponse>(DISCOVERY_QUERY, variables);
+  const media = response.Page?.media;
+  if (!Array.isArray(media))
+    throw new AnilistError("AniList returned an invalid discovery response.");
+  return media.flatMap((entry) => {
+    const candidate = toDiscoveryCandidate(entry);
+    return candidate ? [candidate] : [];
+  });
 }
 
 export function clearAnilistCache(): void {

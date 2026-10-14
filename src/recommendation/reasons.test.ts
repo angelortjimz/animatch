@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildCandidateSeeds } from "./candidates";
+import { NO_FILTERS } from "@/models/anime";
+import { buildCandidateSeeds, buildDiscoverySeeds } from "./candidates";
 import { COMMUNITY_RELATION_TYPE, MAX_REASONS, MIN_SHARED_SELECTIONS } from "./config";
 import { anime, communityRecommendation, relation, reversed, selectedThree } from "./fixtures";
 import { generateReasons } from "./reasons";
@@ -12,8 +13,14 @@ function candidateFrom(
   recommendations: ReturnType<typeof communityRecommendation>[][] = [[], [], []],
   overrides = {},
 ) {
-  const seed = buildCandidateSeeds(selected, relations, recommendations)[0];
+  const seed = buildCandidateSeeds(selected, relations, recommendations, NO_FILTERS)[0];
   if (!seed) throw new Error("expected a candidate seed");
+  return scoreCandidate(seed, anime(10, overrides), selected);
+}
+
+function discoveryCandidate(overrides = {}) {
+  const [seed] = buildDiscoverySeeds([10], selected.length);
+  if (!seed) throw new Error("expected a discovery seed");
   return scoreCandidate(seed, anime(10, overrides), selected);
 }
 
@@ -56,7 +63,7 @@ describe("generateReasons", () => {
 
   it("names the selections that share a genre or theme", () => {
     const unlinked = scoreCandidate(
-      { id: 10, relations: [], sourceCount: 0, relationScore: 0 },
+      { id: 10, origin: "discovery", relations: [], sourceCount: 0, relationScore: 0 },
       anime(10, { genres: ["Drama"], themes: ["Psychological"] }),
       selected,
     );
@@ -105,13 +112,19 @@ describe("generateReasons", () => {
 
   it("falls back to a metadata sentence when nothing else applies", () => {
     const unconnected = scoreCandidate(
-      { id: 10, relations: [], sourceCount: 0, relationScore: 0 },
+      { id: 10, origin: "discovery", relations: [], sourceCount: 0, relationScore: 0 },
       anime(10, { genres: [], themes: [], mainStudios: [], type: null, year: null }),
       selected,
     );
     expect(generateReasons(unconnected, selected)).toEqual([
       "Closest match on genre, era and studio we could find.",
     ]);
+  });
+
+  it("never claims a link to a pick for a discovery candidate", () => {
+    const reasons = generateReasons(discoveryCandidate(), selected);
+    expect(reasons.join(" ")).not.toMatch(/Sits alongside|Fans of/);
+    expect(reasons[0]).toBe("The Drama streak runs through Anime 1, Anime 2 and Anime 3.");
   });
 
   it("is deterministic regardless of selection order", () => {

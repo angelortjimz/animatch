@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CandidateSeed } from "@/models/anime";
+import { NO_FILTERS, type CandidateSeed } from "@/models/anime";
 import { buildCandidateSeeds } from "./candidates";
 import { SCORING_WEIGHTS } from "./config";
 import { anime, relation, selectedThree } from "./fixtures";
@@ -11,6 +11,7 @@ function seedFor(id: number): CandidateSeed {
     selectedThree(),
     [[relation(1, id, "SIDE_STORY")], [], []],
     [[], [], []],
+    NO_FILTERS,
   )[0];
   if (!seed) throw new Error(`expected a seed for ${id}`);
   return seed;

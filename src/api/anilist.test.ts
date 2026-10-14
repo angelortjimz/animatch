@@ -5,6 +5,7 @@ import {
   clearAnilistCache,
   getAnimeBatch,
   getAnimeConnections,
+  getDiscoveryCandidates,
   normalizeAnime,
   normalizeSearchResult,
   searchAnime,
@@ -270,15 +271,30 @@ describe("AniList requests", () => {
     );
     const connections = await getAnimeConnections(1);
     expect(connections.relations).toEqual([
-      { id: 5, title: "The Movie", mediaType: "anime", sourceId: 1, relationType: "SIDE_STORY" },
+      {
+        id: 5,
+        title: "The Movie",
+        mediaType: "anime",
+        format: "MOVIE",
+        sourceId: 1,
+        relationType: "SIDE_STORY",
+      },
       {
         id: 30173,
         title: "The Manga",
         mediaType: "manga",
+        format: "MANGA",
         sourceId: 1,
         relationType: "ADAPTATION",
       },
-      { id: 9, title: "No MAL id", mediaType: "anime", sourceId: 1, relationType: "SPIN_OFF" },
+      {
+        id: 9,
+        title: "No MAL id",
+        mediaType: "anime",
+        format: "TV",
+        sourceId: 1,
+        relationType: "SPIN_OFF",
+      },
     ]);
     expect(connections.recommendations).toEqual([]);
   });
@@ -334,9 +350,9 @@ describe("AniList requests", () => {
     );
     const connections = await getAnimeConnections(1);
     expect(connections.recommendations).toEqual([
-      { id: 20, title: "Top Pick", mediaType: "anime", sourceId: 1, rating: 42 },
-      { id: 21, title: "Unrated", mediaType: "anime", sourceId: 1, rating: 0 },
-      { id: 22, title: "Manga Rec", mediaType: "manga", sourceId: 1, rating: 5 },
+      { id: 20, title: "Top Pick", mediaType: "anime", format: "TV", sourceId: 1, rating: 42 },
+      { id: 21, title: "Unrated", mediaType: "anime", format: "TV", sourceId: 1, rating: 0 },
+      { id: 22, title: "Manga Rec", mediaType: "manga", format: "MANGA", sourceId: 1, rating: 5 },
     ]);
   });
 
@@ -368,6 +384,94 @@ describe("AniList requests", () => {
     expect(requestBody(fetchMock, 0).variables.ids).toHaveLength(50);
     expect(requestBody(fetchMock, 1).variables.ids).toEqual([51]);
     expect(anime.map((item) => item.id)).toEqual(ids);
+  });
+
+  it("lets AniList narrow the format instead of fetching a page we would thin out", async () => {
+    const fetchMock = stubFetch(
+      dataResponse({ Page: { media: [{ id: 9, format: "MOVIE", episodes: 1, popularity: 800 }] } }),
+    );
+    const rows = await getDiscoveryCandidates({
+      genres: ["Action"],
+      formats: ["MOVIE"],
+      excludeIds: [1, 2, 3],
+      page: 1,
+      perPage: 50,
+    });
+    const body = requestBody(fetchMock);
+    expect(body.query).toContain("format_in");
+    expect(body.variables).toMatchObject({
+      genres: ["Action"],
+      formatIn: ["MOVIE"],
+      idNotIn: [1, 2, 3],
+      page: 1,
+      perPage: 50,
+    });
+    expect(rows).toEqual([{ id: 9, format: "MOVIE", episodes: 1, popularity: 800 }]);
+  });
+
+  it("omits the format argument entirely when any format is allowed", async () => {
+    const fetchMock = stubFetch(dataResponse({ Page: { media: [] } }));
+    await getDiscoveryCandidates({
+      genres: ["Action"],
+      formats: [],
+      excludeIds: [1],
+      page: 1,
+      perPage: 50,
+    });
+    const { variables } = requestBody(fetchMock);
+    expect(variables).not.toHaveProperty("formatIn");
+  });
+
+  it("makes no request when there is nothing to search on or exclude from", async () => {
+    const fetchMock = stubFetch(dataResponse({ Page: { media: [] } }));
+    const base = { formats: [], page: 1, perPage: 50, excludeIds: [1] };
+    expect(await getDiscoveryCandidates({ ...base, genres: [] })).toEqual([]);
+    expect(await getDiscoveryCandidates({ ...base, genres: ["Action"], excludeIds: [] })).toEqual(
+      [],
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps a row with an unknown episode count and drops an unusable one", async () => {
+    stubFetch(
+      dataResponse({
+        Page: {
+          media: [
+            { id: 10, format: "TV", episodes: null, popularity: 500 },
+            { id: 11, format: "TV", episodes: 12 },
+            { id: 12, format: "TV", episodes: 12 },
+            { id: 13, format: "NOT_A_FORMAT", episodes: 12 },
+            { format: "TV", episodes: 12 },
+          ],
+        },
+      }),
+    );
+    const rows = await getDiscoveryCandidates({
+      genres: ["Action"],
+      formats: [],
+      excludeIds: [1],
+      page: 1,
+      perPage: 50,
+    });
+    expect(rows).toEqual([
+      { id: 10, format: "TV", episodes: null, popularity: 500 },
+      { id: 11, format: "TV", episodes: 12, popularity: 0 },
+      { id: 12, format: "TV", episodes: 12, popularity: 0 },
+      { id: 13, format: null, episodes: 12, popularity: 0 },
+    ]);
+  });
+
+  it("rejects a discovery page that is not a list", async () => {
+    stubFetch(dataResponse({ Page: {} }));
+    await expect(
+      getDiscoveryCandidates({
+        genres: ["Action"],
+        formats: [],
+        excludeIds: [1],
+        page: 1,
+        perPage: 50,
+      }),
+    ).rejects.toThrow(/invalid discovery response/);
   });
 
   it("treats a 404 as terminal and never leaks the raw API text", async () => {

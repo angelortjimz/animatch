@@ -459,4 +459,115 @@ describe("App", () => {
       expect(document.activeElement).toBe(screen.getAllByRole("combobox")[0]);
     });
   });
+
+  describe("filters", () => {
+    function queue(titles: string[]): RecommendationResult {
+      return {
+        kind: "recommendation",
+        results: titles.map((title, position) => ({
+          anime: anime(position + 9, { title }),
+          reasons: [`Reason for ${title}`],
+          basedOn: [anime(1, { title: "First" })],
+        })),
+      };
+    }
+
+    const formatChip = (label: string): HTMLElement => screen.getByRole("button", { name: label });
+
+    async function narrow(): Promise<void> {
+      await flush(() => {
+        fireEvent.click(formatChip("Movie"));
+      });
+    }
+
+    beforeEach(async () => {
+      api.batch.mockResolvedValue([anime(1), anime(2), anime(3)]);
+      render(<App />);
+      await chooseThreeDistinct();
+      recommendMock.mockResolvedValue(queue(["First Pick", "Second Pick"]));
+      await submit();
+    });
+
+    it("scores the first request without any narrowing", async () => {
+      expect(recommendMock).toHaveBeenCalledWith(expect.anything(), {
+        formats: [],
+        maxEpisodes: null,
+      });
+    });
+
+    it("passes the chosen filters into the next request", async () => {
+      await narrow();
+      await submit();
+      expect(recommendMock).toHaveBeenLastCalledWith(expect.anything(), {
+        formats: ["MOVIE"],
+        maxEpisodes: null,
+      });
+    });
+
+    it("passes the chosen episode ceiling into the next request", async () => {
+      await flush(() => {
+        fireEvent.change(screen.getByRole("slider"), { target: { value: "24" } });
+      });
+      await flush(() => {
+        fireEvent.click(screen.getByRole("checkbox", { name: "Any length" }));
+      });
+      await submit();
+      expect(recommendMock).toHaveBeenLastCalledWith(expect.anything(), {
+        formats: [],
+        maxEpisodes: 24,
+      });
+    });
+
+    it("marks the result stale when a filter changes, without refetching", async () => {
+      expect(document.querySelector(".result-card")?.className).not.toContain("is-stale");
+      await narrow();
+      expect(document.querySelector(".result-card")?.className).toContain("is-stale");
+      expect(screen.getByRole("heading", { name: "First Pick" })).toBeDefined();
+      expect(recommendMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("leaves the result fresh when a filter is toggled off and back on", async () => {
+      await narrow();
+      await narrow();
+      expect(document.querySelector(".result-card")?.className).not.toContain("is-stale");
+    });
+
+    it("states which filters the shown recommendation was scored against", async () => {
+      expect(screen.queryByText(/Matched to your filters/)).toBeNull();
+      await narrow();
+      await submit();
+      expect(screen.getByText(/Movies, any length/)).toBeDefined();
+    });
+
+    it("restores the filters to the ones the result was scored with on undo", async () => {
+      await narrow();
+      expect(document.querySelector(".result-card")?.className).toContain("is-stale");
+
+      await flush(() => {
+        fireEvent.click(screen.getByRole("button", { name: "Undo my last change" }));
+      });
+
+      expect(document.querySelector(".result-card")?.className).not.toContain("is-stale");
+      expect(formatChip("Movie").getAttribute("aria-pressed")).toBe("false");
+      // The picks were never touched by a filter change, so they stay put.
+      expect((screen.getAllByRole("combobox")[0] as HTMLInputElement).value).toBe("Cowboy Bebop");
+    });
+
+    it("keeps the filters in place when the form is submitted again", async () => {
+      await narrow();
+      await submit();
+      expect(formatChip("Movie").getAttribute("aria-pressed")).toBe("true");
+      expect(document.querySelector(".result-card")?.className).not.toContain("is-stale");
+    });
+
+    it("locks the filters while a request is in flight", async () => {
+      await narrow();
+      api.batch.mockReturnValueOnce(new Promise(() => {}));
+      await flush(() => {
+        fireEvent.click(submitButton());
+      });
+      expect(formatChip("Movie").hasAttribute("disabled")).toBe(true);
+      expect(screen.getByRole("slider").hasAttribute("disabled")).toBe(true);
+    });
+  });
 });

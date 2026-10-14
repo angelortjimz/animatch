@@ -1,22 +1,35 @@
 import { useEffect, useRef, useState, type FormEvent, type JSX } from "react";
 import { getAnimeBatch } from "@/api/anilist";
-import type { AnimeSearchResult } from "@/models/anime";
+import type { AnimeSearchResult, RecommendationFilters } from "@/models/anime";
+import { NO_FILTERS } from "@/models/anime";
 import type { UiState } from "@/models/ui";
 import { recommend } from "@/recommendation/recommend";
+import { FilterBar } from "@/ui/FilterBar";
 import { SearchField } from "@/ui/SearchField";
 import { ResultRegion } from "@/ui/ResultRegion";
 
 const FIELD_COUNT = 3;
 
+function filterKey(filters: RecommendationFilters): string {
+  return `${[...filters.formats].sort().join("+")}|${filters.maxEpisodes ?? ""}`;
+}
+
+interface RestorePoint {
+  selections: (AnimeSearchResult | null)[];
+  filters: RecommendationFilters;
+}
+
 export function App(): JSX.Element {
   const [selections, setSelections] = useState<(AnimeSearchResult | null)[]>(() =>
     Array<AnimeSearchResult | null>(FIELD_COUNT).fill(null),
   );
+  const [filters, setFilters] = useState<RecommendationFilters>(NO_FILTERS);
   const [ui, setUi] = useState<UiState>({ kind: "idle" });
   const [scoredSelections, setScoredSelections] = useState<(AnimeSearchResult | null)[] | null>(
     null,
   );
-  const [restorePoint, setRestorePoint] = useState<(AnimeSearchResult | null)[] | null>(null);
+  const [scoredFilters, setScoredFilters] = useState<RecommendationFilters | null>(null);
+  const [restorePoint, setRestorePoint] = useState<RestorePoint | null>(null);
   const [restoreToken, setRestoreToken] = useState(0);
 
   const submitRef = useRef<HTMLButtonElement | null>(null);
@@ -31,15 +44,21 @@ export function App(): JSX.Element {
 
   const hasResult = ui.kind === "recommendation";
   const isStale =
-    hasResult && scoredSelections !== null && scoredKey(scoredSelections) !== scoredKey(selections);
+    hasResult &&
+    ((scoredSelections !== null && scoredKey(scoredSelections) !== scoredKey(selections)) ||
+      (scoredFilters !== null && filterKey(scoredFilters) !== filterKey(filters)));
 
   function scoredKey(items: (AnimeSearchResult | null)[]): string {
     return items.map((item) => (item ? String(item.id) : "-")).join(",");
   }
 
+  function snapshot(): void {
+    if (hasResult) setRestorePoint({ selections, filters });
+  }
+
   function handleSelectionChange(index: number, selection: AnimeSearchResult | null): void {
     if (selections[index]?.id === selection?.id) return;
-    if (hasResult) setRestorePoint(selections);
+    snapshot();
     setSelections((previous) => {
       const next = [...previous];
       next[index] = selection;
@@ -47,9 +66,16 @@ export function App(): JSX.Element {
     });
   }
 
+  function handleFilterChange(next: RecommendationFilters): void {
+    if (filterKey(next) === filterKey(filters)) return;
+    snapshot();
+    setFilters(next);
+  }
+
   function handleUndo(): void {
     if (!restorePoint) return;
-    setSelections(restorePoint);
+    setSelections(restorePoint.selections);
+    setFilters(restorePoint.filters);
     setRestoreToken((current) => current + 1);
   }
 
@@ -69,10 +95,11 @@ export function App(): JSX.Element {
         setUi({ kind: "unavailable" });
         return;
       }
-      const result = await recommend(detailed);
+      const result = await recommend(detailed, filters);
       if (result.kind === "recommendation") {
         setScoredSelections([...selections]);
-        setUi({ kind: "recommendation", results: result.results, index: 0 });
+        setScoredFilters(filters);
+        setUi({ kind: "recommendation", results: result.results, index: 0, filters });
       } else {
         setUi({ kind: "no-match" });
       }
@@ -138,7 +165,7 @@ export function App(): JSX.Element {
               disabled={loading}
               pickedIds={pickedIds}
               restoreToken={restoreToken}
-              restoredSelection={restorePoint?.[index] ?? null}
+              restoredSelection={restorePoint?.selections[index] ?? null}
               onSelectionChange={(next) => handleSelectionChange(index, next)}
             />
           ))}
@@ -148,6 +175,7 @@ export function App(): JSX.Element {
             Please select three different anime.
           </p>
         ) : null}
+        <FilterBar filters={filters} disabled={loading} onChange={handleFilterChange} />
         <button className="submit-button" type="submit" ref={submitRef} disabled={!canSubmit}>
           Find a recommendation
         </button>

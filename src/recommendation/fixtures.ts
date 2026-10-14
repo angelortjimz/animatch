@@ -1,4 +1,11 @@
-import type { Anime, AnimeRelation, CommunityRecommendation, RelatedAnime } from "@/models/anime";
+import type {
+  Anime,
+  AnimeRelation,
+  CommunityRecommendation,
+  DiscoveryCandidate,
+  RecommendationFilters,
+  RelatedAnime,
+} from "@/models/anime";
 
 export const anime = (id: number, overrides: Partial<Anime> = {}): Anime => ({
   id,
@@ -36,11 +43,13 @@ export const relation = (
   id: number,
   relationType: string,
   mediaType = "anime",
+  format = "TV",
 ): RelatedAnime => ({
   sourceId,
   id,
   relationType,
   mediaType,
+  format,
   title: `Anime ${id}`,
 });
 
@@ -48,12 +57,32 @@ export const communityRecommendation = (
   sourceId: number,
   id: number,
   rating = 10,
+  mediaType = "anime",
+  format = "TV",
 ): CommunityRecommendation => ({
   sourceId,
   id,
   rating,
-  mediaType: "anime",
+  mediaType,
+  format,
   title: `Anime ${id}`,
+});
+
+export const discoveryCandidate = (
+  id: number,
+  overrides: Partial<DiscoveryCandidate> = {},
+): DiscoveryCandidate => ({
+  id,
+  format: "TV",
+  episodes: 12,
+  popularity: 100,
+  ...overrides,
+});
+
+export const filters = (overrides: Partial<RecommendationFilters> = {}): RecommendationFilters => ({
+  formats: [],
+  maxEpisodes: null,
+  ...overrides,
 });
 
 export function reversed<T>(items: T[]): T[] {

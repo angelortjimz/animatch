@@ -1,6 +1,7 @@
 import { useEffect, useRef, type JSX, type RefObject } from "react";
-import type { Recommendation } from "@/models/anime";
+import type { Recommendation, RecommendationFilters } from "@/models/anime";
 import type { UiState } from "@/models/ui";
+import { filterLabel } from "@/recommendation/filters";
 import { anilistUrl, metaLine, studioLine } from "./format";
 
 interface ResultRegionProps {
@@ -51,6 +52,7 @@ function GenreChips({ genres }: { genres: string[] }): JSX.Element | null {
 
 function RecommendationCard({
   recommendation,
+  filters,
   hasAnother,
   hasPrevious,
   position,
@@ -63,6 +65,7 @@ function RecommendationCard({
   headingRef,
 }: {
   recommendation: Recommendation;
+  filters: RecommendationFilters;
   hasAnother: boolean;
   hasPrevious: boolean;
   position: number;
@@ -76,6 +79,7 @@ function RecommendationCard({
 }): JSX.Element {
   const anime = recommendation.anime;
   const studios = studioLine(anime.mainStudios);
+  const activeFilters = filterLabel(filters);
   return (
     <section
       className={isStale ? "result-card is-stale" : "result-card"}
@@ -89,9 +93,12 @@ function RecommendationCard({
           </p>
         ) : null}
       </div>
+      {activeFilters ? (
+        <p className="active-filters">Matched to your filters: {activeFilters}</p>
+      ) : null}
       {isStale ? (
         <p className="stale-note">
-          Your picks changed since this one was scored, so it no longer reflects them.
+          Your picks or filters changed since this one was scored, so it no longer reflects them.
         </p>
       ) : null}
       <div className="result-layout">
@@ -215,6 +222,7 @@ export function ResultRegion({
       <RecommendationCard
         key={current.anime.id}
         recommendation={current}
+        filters={ui.filters}
         hasAnother={hasAnother}
         hasPrevious={ui.index > 0}
         position={ui.index + 1}

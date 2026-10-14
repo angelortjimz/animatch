@@ -37,6 +37,24 @@ export const ERA_SIMILARITY_YEARS = 10;
 
 export const CANDIDATE_LIMIT = 24;
 
+export const FILTERED_POOL_SIZE = 60;
+
+export const DISCOVERY_RELATION_TYPE = "DISCOVERY";
+
+export const DISCOVERY_RELATION_WEIGHT = 0.3;
+
+export const DISCOVERY_GENRE_LIMIT = 3;
+
+export const DISCOVERY_PER_PAGE = 50;
+
+export const DISCOVERY_MAX_PAGES = 2;
+
+export const EPISODE_SLIDER_MIN = 1;
+
+export const EPISODE_SLIDER_MAX = 200;
+
+export const EPISODE_SLIDER_DEFAULT = 24;
+
 export const MAX_REASONS = 2;
 
 export const REQUIRED_SELECTIONS = 3;

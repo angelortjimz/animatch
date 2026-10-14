@@ -8,6 +8,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A filter panel offering multi-select format chips (TV, TV Short, Movie,
+  OVA, ONA, Special; nothing pressed means any format) and an episode
+  ceiling on a slider whose floor is pinned at one episode, with an
+  "Any length" toggle for turning the ceiling off
+- Filters are applied **before** the 24 recommendations are elected, never
+  after. The format is applied while the candidate pool is being
+  collected — it is already known on every relation and community
+  recommendation — so asking for Movies collects Movies rather than
+  collecting everything and discarding most of it. The episode ceiling is
+  applied to an enlarged candidate pool before ranking, so narrowing
+  still aims to fill all 24 slots
+- A discovery query that tops the pool back up to 24 when narrowing (or
+  simply running out of connected titles) leaves it short. AniList applies
+  the format filter server side, and the episode ceiling is applied to the
+  thin response before any of it is hydrated. Titles with no published
+  episode count are always kept, since a ceiling is a preference about
+  length rather than a verified fact
+- The result card states which filters it was scored against, and changing
+  a filter marks a shown result stale exactly like editing a pick does
+- Undo now restores the picks and the filters together, so reverting never
+  leaves the user in a mix they did not choose
+- Tests for all of the above: format and episode matching, the unknown
+  episode count, the slider floor, the server-side format argument, the
+  top-up (paging, exclusions, overlaps, deduplication, failure), and
+  determinism under shuffled input with filters applied
+
 - A prerequisite gate on candidates: a title that follows another
   series — a sequel, a later season, or a film continuation such as
   _Cowboy Bebop: The Movie_ or _The End of Evangelion_ — is only
@@ -72,6 +98,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `recommend()` now takes the active filters, and `buildCandidateSeeds()`
+  takes them too: the format check happens on the raw format already
+  carried by every relation and community recommendation, before the
+  pool is sorted and capped. While any filter is active the pool widens to
+  `FILTERED_POOL_SIZE` so the final slice of `CANDIDATE_LIMIT` still has
+  enough left to fill it
+- `RelatedAnime` and `CommunityRecommendation` now carry the raw AniList
+  `format` the connections query was already selecting but discarding.
+  Without it a format filter could not run before hydration
+- The format enum and its display labels moved to `src/models/anime.ts`
+  as `ANIME_FORMATS` / `ANIME_FORMAT_LABELS`, so the raw value sent in a
+  query and the label shown to the user come from one definition
+- `CandidateSeed` carries an `origin` (`relation` or `discovery`), and a
+  discovery candidate's relation has a null `sourceId` — so it never
+  claims a link to a pick in its reasons and scores below anything that
+  is genuinely connected
+- The stale-card note now reads "picks or filters", since either can put
+  the shown result out of date
 - The recommendation card now reads as the peak of the page instead of a
   quiet continuation of the selector: it is set off by the same 3px ink
   rule the selector uses (drawn in once on arrival, respecting reduced
