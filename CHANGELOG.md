@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Search now reads AniList's `X-RateLimit-Remaining` response header and refuses
+  to auto-fire once the budget falls to three requests or fewer, surfacing the
+  existing "Search is unavailable. Try again." state instead of spending the
+  last requests into a hard 429
+
 - A `public/favicon.svg` icon and its `<link rel="icon">`, so the browser tab
   and bookmark show a mark instead of requesting a missing `/favicon.ico` on
   every load. It uses the existing palette — the Press Red accent on the paper
@@ -179,6 +184,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   recommendation is being scored
 
 ### Changed
+
+- The search debounce rose from 300ms to 600ms and the minimum query length from
+  2 to 3 characters, cutting the requests a session fires against a limit
+  measured at 30/minute. Results arrive about 300ms later, and a two-character
+  title needs a third keystroke before it searches
+- `searchAnime` now shares one in-flight request between callers searching the
+  same term, and a term already fetched is served from cache, so re-searching or
+  a second field typing the same word costs no request
 
 - The episode ceiling tops out at 120 episodes instead of 200. 200 was far past
   the point where a ceiling still describes anything — most long-running
@@ -422,6 +435,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `DETAIL_CONCURRENCY` (no longer needed with batched fetching)
 
 ### Fixed
+
+- The search response cache was unreachable from the UI. `cached()` bypassed the
+  cache whenever an `AbortSignal` was present, and `SearchField` always passes
+  one, so every debounce tick was a guaranteed network call. The cache now holds
+  the shared in-flight promise and each caller races its own abort against it:
+  concurrent identical searches make one request, a warm entry serves abortable
+  callers, and the shared request is aborted only once the last caller has gone,
+  so it cannot retry unseen and spend budget nobody is waiting for. This
+  reverses the earlier "abortable searches bypass the cache" decision — the test
+  that encoded it is rewritten to assert the real invariant: one fetch, both
+  callers served, aborting one leaves the other intact
+- `searchAnime("Cowboy")` and `searchAnime("cowboy")` were two requests; cache
+  keys are now lowercased with whitespace collapsed, so case and spacing variants
+  resolve to one entry
+- An already-aborted signal now rejects before any request is made, instead of
+  issuing one fetch that is immediately abandoned
 
 - Every search field showed a dead "Clear" button, whether or not a title
   was chosen. `hidden` on `.field-clear` was defeated by the rule's own
