@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A native Git pre-push hook (`.githooks/pre-push`) that runs `pnpm check`, so
+  lint, format, tests and build are verified before a push rather than only when
+  someone remembers. It needs no new dependency: a `prepare` script sets
+  `core.hooksPath` to `.githooks` on `pnpm install`, so it is wired up
+  automatically for each contributor. CI remains the enforcement point — the
+  hook is fast, local feedback and is bypassable with `--no-verify`
+
 - An error boundary around the app. A render crash previously produced a blank
   page with no diagnostic surface at all, because `console.log` is deliberately
   absent from `src/`. The boundary catches the failure and shows the existing
