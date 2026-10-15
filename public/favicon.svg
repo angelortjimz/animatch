@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="AniNext">
-  <rect width="64" height="64" rx="14" fill="#a03a19" />
-  <path d="M25 19.5 44.5 32 25 44.5z" fill="#f6f8f5" />
+<svg width="150" height="150" viewBox="0 0 150 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M0 75H75V150H0V75Z" fill="#F6F8F5"/>
+<rect x="75" width="75" height="75" fill="#A03A19"/>
 </svg>
