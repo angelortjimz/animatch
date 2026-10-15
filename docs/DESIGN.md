@@ -1,5 +1,5 @@
 ---
-name: AniNext
+name: AniMatch
 description: A broadsheet desk for anime discovery — one justified answer, printed in ink on uncoated stock.
 colors:
   stock: "#f6f8f5"
@@ -127,13 +127,13 @@ components:
     textColor: "{colors.slate}"
 ---
 
-# Design System: AniNext
+# Design System: AniMatch
 
 ## Overview
 
 **Creative North Star: "The Broadsheet Desk"**
 
-AniNext is laid out like a broadsheet page that has been read, annotated, and set back on the
+AniMatch is laid out like a broadsheet page that has been read, annotated, and set back on the
 desk. Every screen is one column of uncoated stock, ruled top to bottom, with the work done in
 ink rather than in chrome. The three picks, the filters, and the answer all live on that single
 sheet — nothing floats above the page except things that are genuinely in the air (an open

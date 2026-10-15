@@ -1,8 +1,8 @@
-# AniNext — Deployment Readiness Plan
+# AniMatch — Deployment Readiness Plan
 
 **Host:** Hostinger Business plan (Node.js Web App flow, GitHub auto-deploy)
 **Architecture:** Option A — pure static client-side SPA, no backend
-**Status:** In progress — implementation order set (§11.3); branch 1 landed.
+**Status:** In progress — branches 1–5 landed; Phase 6 hardening sequenced in §13.
 Hostinger panel access is unavailable, so every branch except the deploy itself
 proceeds now and deployment is deferred.
 **Date:** 2026-10-15
@@ -11,7 +11,7 @@ proceeds now and deployment is deferred.
 
 ## 1. Summary
 
-AniNext is a client-only Vite + React SPA that calls the AniList GraphQL API
+AniMatch is a client-only Vite + React SPA that calls the AniList GraphQL API
 directly from the browser. AniList returns `access-control-allow-origin: *`, so
 no CORS proxy is required and the app deploys as static files.
 
@@ -386,7 +386,7 @@ These are unchanged by this work and must not be violated:
 
 ### AniList terms compliance
 
-- **Naming:** "AniNext" does not contain "AniList" or "AniChart", so the
+- **Naming:** "AniMatch" does not contain "AniList" or "AniChart", so the
   mandatory `UNOFFICIAL` suffix does **not** apply.
 - **Attribution:** the footer credit naming AniList as the data source and the
   non-affiliation statement are a standing commitment — keep them as written.
@@ -435,6 +435,9 @@ is verified with `pnpm check` before it does.
 | 3   | `api/search-request-reduction` | §4 debounce, cache repair, header gating    | The risky change, isolated and revertable               | **Done** |
 | 4   | `app/production-resilience`    | §5 error boundary, batch cache, timeout     | Independent of Phase 1                                  | **Done** |
 | 5   | `chore/git-hooks`              | §12 pre-push hook, `prepare` script         | Depends on nothing; last because it is pure convenience | **Done** |
+
+Branches 6–14 extend this sequence as **Phase 6 — Hardening** (§13), ordered by
+the urgency of the review findings behind them.
 
 Hostinger panel access is currently unavailable, so the deploy steps in §3.4 —
 connecting GitHub, confirming the build settings, and the first build — are
@@ -614,7 +617,195 @@ scoping start diverging per file type.
 
 ---
 
-## 13. Out of scope
+## 13. Phase 6 — Hardening (post-implementation review)
+
+Branches 1–5 are landed. A strict review of the resulting code found that the
+request layer was never safe under a degraded AniList, and that Phases 1–2 made
+two of those weaknesses worse: the batch cache (§5.2) has no bound, and the
+search rate-limit gate (§4.5) can lock the search field permanently.
+
+Ordered by urgency. **Branches 6–9 are correctness and reliability fixes and
+should land before the first deploy.** Branches 10–11 are low-risk hygiene.
+Branches 12–14 are optional and may stay deferred.
+
+### 13.1 Sequence
+
+| #   | Branch                       | Contents                                                       | Urgency  | Status   |
+| --- | ---------------------------- | -------------------------------------------------------------- | -------- | -------- |
+| 6   | `api/request-safety`         | Request timeouts, real cancellation, `Retry-After` clamping    | Critical | Pending  |
+| 7   | `api/cache-bounds`           | TTL, entry cap + LRU, ABA-safe deletes, clear aborts in flight | Critical | Pending  |
+| 8   | `api/rate-limit-recovery`    | Gate every query kind; recover after `X-RateLimit-Reset`       | High     | Pending  |
+| 9   | `api/graceful-degradation`   | Skip bad rows; partial success; multi-error and `null` body    | High     | Pending  |
+| 10  | `fix/deterministic-ordering` | Remove locale-dependent `localeCompare`                        | Medium   | Pending  |
+| 11  | `chore/deploy-hardening`     | Non-fatal `prepare`, pin `engines`, `base`, package name       | Medium   | Pending  |
+| 12  | `ci/dependency-guard`        | Coverage threshold, `pnpm audit`, Dependabot, axe              | Low      | Deferred |
+| 13  | `site/metadata`              | `canonical`, `og:image`, `twitter:image`                       | Low      | Blocked  |
+| 14  | `ui/dark-mode`               | `prefers-color-scheme` and dynamic `theme-color`               | Low      | Deferred |
+
+Each branch satisfies §11.4 — `pnpm check` green and a `CHANGELOG.md` entry
+under `[Unreleased]`.
+
+### 13.2 Branch 6 — `api/request-safety` (critical)
+
+**Findings.** `fetchJson` (`src/api/anilist.ts:419`) passes a signal to `fetch`
+but nothing creates a deadline. The only reachable abort is search's:
+`getAnimeConnections` drops the signal (`:547`), `getDiscoveryCandidates` takes
+none (`:617`), and `getAnimeBatch`'s signal is the cache entry's own controller
+(`:575`). A half-open socket therefore hangs `Promise.all` in `recommend.ts:92`
+indefinitely. `App.tsx`'s 45 s deadline (`:108`) and Cancel (`:144`) only change
+UI state and bump `runRef` — the fetches keep retrying. `retryAfterMs` (`:399`)
+has no ceiling (`"1e308"` → `Infinity`, clamped by `setTimeout` to ~24.8 days)
+and ignores the HTTP-date form.
+
+**Changes.**
+
+- `src/api/anilist.ts`: give `fetchJson` an internal deadline via
+  `AbortSignal.timeout`, combined with the caller's signal through
+  `AbortSignal.any`, so no request can hang.
+- Thread the signal through `getAnimeConnections` and `getDiscoveryCandidates`,
+  and expose one from `getAnimeBatch`.
+- Clamp `retryAfterMs` to `[0, 60_000]`; parse the HTTP-date form with
+  `Date.parse`; return `null` for an empty or non-finite value.
+- Add an `isAbortError(error): boolean` helper and replace both
+  `instanceof DOMException` checks (`:443`, `SearchField.tsx:120`). Keep the API
+  layer free of DOM globals (§10).
+- `src/App.tsx`: hold an `AbortController` per submit; pass its signal to
+  `getAnimeBatch` and `recommend`; abort it in the deadline handler and in
+  `handleCancel`.
+- `src/recommendation/recommend.ts`: accept a signal and forward it to every
+  API call.
+
+**Tests.** A never-settling fetch is bounded by the deadline; each entry point
+propagates an abort; `Retry-After` date / huge / negative / empty cases; Cancel
+aborts the in-flight fetch. Keep the existing retry and backoff semantics
+unchanged.
+
+### 13.3 Branch 7 — `api/cache-bounds` (critical)
+
+**Findings.** The `cache` map (`src/api/anilist.ts:473`) has no TTL, no size
+cap, and no production eviction — `clearAnilistCache` (`:627`) has no production
+caller. Branch 4 added `batch:` keys (`:574`), a fresh high-cardinality key per
+submit holding up to 50 fully-hydrated `Anime` objects with full relation edges,
+while search keys are user-typable and unbounded. Metadata is frozen at first
+fetch, and a hung entry pins its key forever. `cache.delete` (`:485`, `:512`) is
+not identity-guarded (ABA race), and `clearAnilistCache` orphans in-flight
+controllers.
+
+**Changes.**
+
+- `src/api/anilist.ts`: cap entries with an LRU eviction (`CACHE_MAX_ENTRIES`)
+  and expire them after a TTL (`CACHE_TTL_MS`) — store `createdAt` on each entry.
+- Guard every delete with `if (cache.get(key) === entry)`.
+- `clearAnilistCache` aborts each live controller before clearing.
+- Keep the bounds in `config.ts`, configurable, not hardcoded (§10).
+
+**Tests.** Eviction past the cap; an expired entry is refetched; the ABA race;
+clear aborts in-flight work. In-memory only — no persistence (§10, AniList
+terms).
+
+### 13.4 Branch 8 — `api/rate-limit-recovery` (high)
+
+**Findings.** `isSearchRateLimited` (`:462`) is checked only in search (`:533`);
+connections, batch, and discovery are unguarded even though they drain the same
+per-IP budget. `rateLimitRemaining` updates only when a response carrying the
+header arrives (`:455`), so on the search screen a low value is terminal: the
+"Try the search again" button (`SearchField.tsx:220`) re-enters the same guard
+and fails forever. `Number("") === 0` is finite, so one empty
+`X-RateLimit-Remaining` disables search.
+
+**Changes.**
+
+- Track `X-RateLimit-Reset` alongside remaining; the lock expires once the reset
+  time passes, so there is no permanent dead-end.
+- Apply the guard to connections, batch, and discovery — fail fast rather than
+  spend retries against a throttled server.
+- `trackRateLimit`: ignore empty or non-finite values and clamp to `>= 0`.
+- `SearchField`: reflect a recoverable "temporarily unavailable" state rather
+  than an instantly retryable one.
+
+**Tests.** Recovery after the reset time; empty header ignored; a non-search
+call is suppressed when the budget is low; no permanent lock. The lock is
+per-tab; the budget is per-IP.
+
+### 13.5 Branch 9 — `api/graceful-degradation` (high)
+
+**Findings.** `normalizeAnime` and `normalizeSearchResult` throw on a missing
+field and run inside `.map` (`:591`, `:540`), so one bad row discards the other
+49 in a batch, or the other four search results, after the requests were already
+spent. Only `errors[0]` is read (`:427`); a response carrying both `data` and
+`errors` is treated as a total failure (`:429`); a literal `null` body crashes
+`:427`.
+
+**Changes.**
+
+- Normalize leniently: skip a row missing required fields, the way discovery and
+  connections already do (`:558`, `:621`).
+- Read all GraphQL errors; treat `data` present alongside `errors` as partial
+  success.
+- Guard the payload with `payload?.errors`.
+
+**Tests.** A bad row among good ones still returns the good ones; partial
+success; a `null` body; multiple errors.
+
+### 13.6 Branch 10 — `fix/deterministic-ordering` (medium)
+
+**Findings.** `reasons.ts:5` and `filters.ts:55` sort user-visible strings with
+locale-dependent `localeCompare`, so identical AniList data can render different
+reason text across browsers. `AGENTS.md` treats determinism as a tested
+property.
+
+**Changes.** Replace `localeCompare` with a codepoint comparison, or pin the
+locale and sensitivity.
+
+**Tests.** Shuffle the inputs and assert identical output.
+
+### 13.7 Branch 11 — `chore/deploy-hardening` (medium)
+
+**Findings.** `"prepare": "git config core.hooksPath .githooks"`
+(`package.json:21`) runs on every `pnpm install`; where the build directory has
+no `.git`, it exits non-zero and fails the install — a first-deploy hazard.
+`engines` is a range, not a pin (risk R1). `vite.config.ts` sets no `base`. The
+package name is `next-frame-anime-recommender`, not `animatch`.
+
+**Changes.**
+
+- Make `prepare` non-fatal (`|| true`) or guard on the presence of `.git`.
+- Pin `engines` to `22.x`.
+- Set `base: "./"` for portable asset paths.
+- Rename the package to `animatch`.
+- Optional: a `Content-Security-Policy` and `Referrer-Policy` meta in
+  `index.html`.
+
+**Tests.** No behaviour to test; `pnpm check` plus `pnpm exec vite preview`.
+
+### 13.8 Branch 12 — `ci/dependency-guard` (low, optional)
+
+**Findings.** CI runs `pnpm check` but nothing guards the suite against silent
+shrinkage, and there is no dependency or accessibility automation.
+
+**Changes.** A Vitest coverage threshold; `pnpm audit`; Dependabot; an axe
+accessibility check on the rendered app. The dev-only tooling needs approval
+(§10).
+
+### 13.9 Branch 13 — `site/metadata` (low, blocked)
+
+`canonical`, `og:image`, and `twitter:image` are absent (`index.html:12`). They
+need the production domain and a 1200×630 image, neither of which exists yet.
+Blocked until then.
+
+### 13.10 Branch 14 — `ui/dark-mode` (low, optional)
+
+Only `prefers-reduced-motion` is honoured; there is no `prefers-color-scheme`
+support, and `theme-color` is hardcoded light (`index.html:10`). Optional.
+
+### 13.11 Not planned
+
+`src/styles.css` is a single 1,195-line file. Splitting it is possible but low
+value at this size; revisit if it grows.
+
+---
+
+## 14. Out of scope
 
 - **Caching proxy (Option B).** A serverless layer would deduplicate across
   users and cache at the edge, fixing shared-IP exhaustion. It introduces a

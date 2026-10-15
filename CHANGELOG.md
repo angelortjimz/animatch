@@ -197,6 +197,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The app is renamed from AniNext to AniMatch across the UI, user-facing
+  metadata, documentation, and the package name (`animatch`). No behaviour
+  changed: no code identifier, CSS class, test, or scoring rule referenced the
+  old name
+
 - `getAnimeBatch` results are cached on the sorted, de-duplicated id list, so a
   repeat submit with the same picks reuses the metadata already fetched instead
   of re-requesting it. The internal 50-per-request chunking stays inside the one cached load

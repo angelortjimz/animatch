@@ -23,7 +23,7 @@ queue rather than a single answer, which only pays off for someone willing to br
 
 ## Product Purpose
 
-AniNext takes three distinct anime a user enjoyed and returns one SFW, discovery-first
+AniMatch takes three distinct anime a user enjoyed and returns one SFW, discovery-first
 recommendation, computed entirely on the user's device from AniList metadata.
 
 Success means the user leaves with a title they would not have found on their own, and enough
@@ -86,7 +86,7 @@ Undecided, and future work must not invent an answer:
 
 Decided, and no longer open:
 
-- Deployment target and hosting. AniNext is a pure static, client-only SPA — no backend,
+- Deployment target and hosting. AniMatch is a pure static, client-only SPA — no backend,
   database, or server runtime — deployed to Hostinger's Business plan via the Node.js Web App
   flow with GitHub auto-deploy. Merging to `main` triggers the build.
 - Score visibility. AniList's public community score is shown on the result card, as a caption
@@ -95,7 +95,7 @@ Decided, and no longer open:
 
 ## Brand Commitments
 
-- **Name:** AniNext. Product name is fixed.
+- **Name:** AniMatch. Product name is fixed.
 - **Voice:** warm but plain-spoken. No hype words, no urgency or countdown pressure, no
   exclamation marks. Reasons describe the user's own taste, not the algorithm's internals.
 - **Language:** English-first. Japanese native titles may appear as secondary text and must be
@@ -116,7 +116,7 @@ Decided, and no longer open:
   known weaknesses rather than as current truth.
 
 Not available, and never to be fabricated: testimonials, user counts, press, pricing, licensing
-terms, accuracy benchmarks, or any claim that AniNext is better than another recommender.
+terms, accuracy benchmarks, or any claim that AniMatch is better than another recommender.
 
 ## Product Principles
 

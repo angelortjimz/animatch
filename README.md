@@ -1,4 +1,4 @@
-# AniNext
+# AniMatch
 
 A small, deterministic anime recommendation app powered by the AniList API. Pick three distinct anime and receive one SFW, discovery-first recommendation based on eligible related titles, community recommendations, and metadata similarity.
 
@@ -33,7 +33,7 @@ That runs everything in sequence. Individually:
 
 ## Deployment
 
-AniNext is a pure static, client-only SPA. It has no backend, database, or
+AniMatch is a pure static, client-only SPA. It has no backend, database, or
 server runtime; the AniList API is called directly from the browser. It deploys
 to Hostinger's Business plan through the Node.js Web App flow with GitHub
 auto-deploy.
