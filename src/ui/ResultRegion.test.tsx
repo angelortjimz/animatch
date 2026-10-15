@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 import type { Recommendation, RecommendationFilters } from "@/models/anime";
 import type { UiState } from "@/models/ui";
@@ -314,5 +314,89 @@ describe("ResultRegion re-roll", () => {
   it("renders no controls at all without handlers", () => {
     renderRegion(recommended([yurei, recommendation(8)]));
     expect(screen.queryByRole("button")).toBeNull();
+  });
+});
+
+describe("ResultRegion arrival", () => {
+  const scrollIntoView = vi.fn();
+
+  function media(reduced: boolean): void {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn().mockReturnValue({
+        matches: reduced,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+    );
+  }
+
+  beforeEach(() => {
+    scrollIntoView.mockClear();
+    media(false);
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+      writable: true,
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+  });
+
+  it("brings the arriving recommendation into view instead of leaving it below the form", () => {
+    renderRegion(recommended([yurei]));
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "start", behavior: "smooth" });
+  });
+
+  it("brings an outcome card into view too", () => {
+    renderRegion({ kind: "no-match" });
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not move the page for the loading card under the button just pressed", () => {
+    const { rerender } = render(
+      <ResultRegion ui={{ kind: "loading", slow: false }} isStale={false} />,
+    );
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    rerender(<ResultRegion ui={{ kind: "loading", slow: true }} isStale={false} />);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it("still lands on the answer after a wait, when the queue has not moved", () => {
+    const { rerender } = render(
+      <ResultRegion ui={{ kind: "loading", slow: false }} isStale={false} />,
+    );
+    rerender(<ResultRegion ui={recommended([yurei])} isStale={false} />);
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it("reveals a fresh outcome card after a second run", () => {
+    const { rerender } = render(<ResultRegion ui={{ kind: "no-match" }} isStale={false} />);
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+    rerender(<ResultRegion ui={{ kind: "loading", slow: false }} isStale={false} />);
+    rerender(<ResultRegion ui={{ kind: "no-match" }} isStale={false} />);
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
+  });
+
+  it("stays put when the queue is re-rolled in place", () => {
+    const { rerender } = render(
+      <ResultRegion ui={recommended([yurei, recommendation(8)])} isStale={false} />,
+    );
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+    rerender(<ResultRegion ui={recommended([yurei, recommendation(8)], 1)} isStale={false} />);
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops the animation for a visitor who asked for less motion", () => {
+    media(true);
+    renderRegion(recommended([yurei]));
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "start", behavior: "auto" });
   });
 });

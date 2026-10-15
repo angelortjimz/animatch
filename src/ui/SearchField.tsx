@@ -200,16 +200,17 @@ export function SearchField({
           onChange={handleInput}
           onKeyDown={handleKeyDown}
         />
-        <button
-          className="field-clear"
-          type="button"
-          aria-label={`Clear Anime ${index}`}
-          hidden={selected === null}
-          disabled={disabled}
-          onClick={handleClear}
-        >
-          Clear
-        </button>
+        {selected === null ? null : (
+          <button
+            className="field-clear"
+            type="button"
+            aria-label={`Clear Anime ${index}`}
+            disabled={disabled}
+            onClick={handleClear}
+          >
+            Clear
+          </button>
+        )}
       </div>
       <p className="field-detail">{selected ? metaLine(selected) || "Anime" : ""}</p>
       <p id={`anime-status-${index}`} className="field-status" aria-live="polite">

@@ -15,6 +15,18 @@ interface ResultRegionProps {
   onRetry?: () => void;
 }
 
+function prefersReducedMotion(): boolean {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+}
+
+function revealRegion(element: HTMLElement | null): void {
+  if (!element || typeof element.scrollIntoView !== "function") return;
+  element.scrollIntoView({
+    block: "start",
+    behavior: prefersReducedMotion() ? "auto" : "smooth",
+  });
+}
+
 function announcement(ui: UiState, isStale: boolean): string {
   switch (ui.kind) {
     case "idle":
@@ -70,6 +82,7 @@ function RecommendationCard({
   onUndo,
   onEditPicks,
   headingRef,
+  regionRef,
 }: {
   recommendation: Recommendation;
   filters: RecommendationFilters;
@@ -83,6 +96,7 @@ function RecommendationCard({
   onUndo?: () => void;
   onEditPicks?: () => void;
   headingRef: RefObject<HTMLHeadingElement | null>;
+  regionRef: RefObject<HTMLElement | null>;
 }): JSX.Element {
   const anime = recommendation.anime;
   const studios = studioLine(anime.mainStudios);
@@ -91,6 +105,7 @@ function RecommendationCard({
     <section
       className={isStale ? "result-card is-stale" : "result-card"}
       aria-labelledby="recommendation-title"
+      ref={regionRef}
     >
       <div className="result-head">
         <p className="eyebrow">{isStale ? "Previous recommendation" : "Your recommendation"}</p>
@@ -197,12 +212,25 @@ export function ResultRegion({
   onRetry,
 }: ResultRegionProps): JSX.Element | null {
   const headingRef = useRef<HTMLHeadingElement | null>(null);
+  const regionRef = useRef<HTMLElement | null>(null);
+  const revealedRef = useRef(false);
   const current = ui.kind === "recommendation" ? ui.results[ui.index] : undefined;
   const focusKey = isStale ? null : (current?.anime.id ?? null);
 
   useEffect(() => {
-    if (focusKey !== null) headingRef.current?.focus();
+    if (focusKey !== null) headingRef.current?.focus({ preventScroll: true });
   }, [focusKey]);
+
+  useEffect(() => {
+    if (ui.kind === "idle") return;
+    if (ui.kind === "loading") {
+      revealedRef.current = false;
+      return;
+    }
+    if (revealedRef.current) return;
+    revealedRef.current = true;
+    revealRegion(regionRef.current);
+  }, [ui.kind]);
 
   if (ui.kind === "idle") return null;
 
@@ -221,7 +249,7 @@ export function ResultRegion({
     return (
       <>
         {status}
-        <OutcomeCard ui={ui} onCancel={onCancel} onRetry={onRetry} />
+        <OutcomeCard ui={ui} onCancel={onCancel} onRetry={onRetry} regionRef={regionRef} />
       </>
     );
   }
@@ -244,6 +272,7 @@ export function ResultRegion({
         onUndo={onUndo}
         onEditPicks={onEditPicks}
         headingRef={headingRef}
+        regionRef={regionRef}
       />
     </>
   );
@@ -253,14 +282,16 @@ function OutcomeCard({
   ui,
   onCancel,
   onRetry,
+  regionRef,
 }: {
   ui: UiState;
   onCancel?: () => void;
   onRetry?: () => void;
+  regionRef: RefObject<HTMLElement | null>;
 }): JSX.Element {
   if (ui.kind === "loading") {
     return (
-      <section className="message-card message-card--loading">
+      <section className="message-card message-card--loading" ref={regionRef}>
         <span className="spinner" aria-hidden="true"></span>
         <p className="message-body">Finding your next anime...</p>
         {ui.slow ? (
@@ -278,7 +309,7 @@ function OutcomeCard({
   }
   if (ui.kind === "no-match") {
     return (
-      <section className="message-card">
+      <section className="message-card" ref={regionRef}>
         <h2 className="card-title">No discovery match yet</h2>
         <p className="message-body">
           Every candidate for these three picks was a direct sequel or spin-off of one you chose, or
@@ -289,7 +320,7 @@ function OutcomeCard({
   }
   if (ui.kind === "unavailable") {
     return (
-      <section className="message-card message-card--warn">
+      <section className="message-card message-card--warn" ref={regionRef}>
         <h2 className="card-title">One selection is no longer available</h2>
         <p className="message-body">
           Anime {ui.field} is no longer listed. Clear that field and try again.
@@ -298,7 +329,7 @@ function OutcomeCard({
     );
   }
   return (
-    <section className="message-card message-card--error">
+    <section className="message-card message-card--error" ref={regionRef}>
       <h2 className="card-title">We could not find a recommendation</h2>
       <p className="message-body">
         The anime database is temporarily unavailable. Please try again in a moment.

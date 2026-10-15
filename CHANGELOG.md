@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `DESIGN.md`, the visual system extracted from the existing implementation:
+  the "Broadsheet Desk" north star, the Press Red / Press Blue / Slate palette on
+  uncoated stock, the two-voice Georgia-and-sans type split, the flat-by-default
+  elevation doctrine, and per-component behaviour. It records the design
+  decisions that were already in `src/styles.css` rather than introducing new
+  ones. `.impeccable/design.json` accompanies it with tonal ramps, motion
+  tokens, and drop-in component snippets
+
 - `PRODUCT.md`, a durable record of product truth for future work: who the two
   audiences are, the discovery-not-continuation and deterministic-explainability
   claims, confirmed capabilities and constraints, the binding voice and
@@ -124,9 +132,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Tests for the collapse: the panel stays out of the DOM by default, opens
   on press, closes again without losing the choices, and keeps reporting
   the active narrowing while folded
+- The episode ceiling reads out beside the slider as a labelled value, in
+  tabular numerals so the line does not shift as the number changes. It is
+  an `<output>`, so moving the slider announces the new ceiling instead of
+  leaving the change to the range input's raw value alone
+- A "Clear filters" control in the filter heading, offered only while
+  something is actually narrowed and reachable whether the panel is open
+  or folded. One press returns the format chips and the episode ceiling
+  together, and it is captured by the same undo snapshot as any other
+  filter change, so a cleared result is still recoverable
+- Tests for it: absent while unfiltered, clearing both axes in a single
+  change, still reachable while the panel is folded, and locked while a
+  recommendation is being scored
 
 ### Changed
 
+- The "Matched to your filters" line on a result card no longer butts against
+  the recommendation above it. It stays exactly the plain single sentence it
+  always was — same sans, same caption size, same quiet tone — but now opens
+  32px above the answer instead of 0, and is capped at the 68ch measure so it
+  cannot run the full width of the card. The fix is spacing only; the line's
+  voice is unchanged
+
+- The episode ceiling control was rebuilt around a real range: an 8px rail
+  with an accent fill running to the thumb, a 26px thumb with its own
+  hover, active and focus states, and the floor and ceiling labelled under
+  the rail in tabular numerals. The "Any length" checkbox grew from 16px to
+  20px and moved out of the label column into a bordered toggle beside the
+  value it disables, where the relationship is legible, with a checked
+  state that reads as a setting rather than an empty box. The fill is
+  driven by `transform: scaleX()` so dragging never animates layout
+- The "Any length" toggle keeps its remembered ceiling, so ticking and
+  unticking it still restores the value the slider was left at, and
+  clearing the filters does not discard it either
 - `recommend()` now takes the active filters, and `buildCandidateSeeds()`
   takes them too: the format check happens on the raw format already
   carried by every relation and community recommendation, before the
@@ -253,6 +291,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - One shared 160ms easing across the hoverable controls (chips, clear,
   retry, re-roll, suggestion rows, credit link), which previously snapped
   while the submit button and the fold eased
+- The open filter panel is laid out as two rails and two hairline-separated
+  rows: the labels and the "Any length" switch sit in a 9rem left rail, the
+  controls in the rest. It reads as one instrument panel instead of four
+  stacked fragments, and the rail collapses under the controls below 700px
+- "Find a recommendation" is set in the display serif at lead size with a
+  fixed minimum width, and goes full width below 700px, so the form ends on
+  a deliberate action rather than a small dark chip floating left
+- The AniList credit now carries the `.anilist-link` treatment the
+  stylesheet already defined for it, so the source is named as an
+  attribution instead of reading as more body text
 
 - Retry decisions in the API client go through a single `isRetryable(status)`
   helper instead of repeating the condition in the request and catch paths
@@ -329,12 +377,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Every search field showed a dead "Clear" button, whether or not a title
+  was chosen. `hidden` on `.field-clear` was defeated by the rule's own
+  `display: inline-flex`, so a divider sat permanently inside the control
+  and the focus underline stopped short of it. The button is now rendered
+  only once a selection exists
+- The search field drew two focus indicators at once: the input's own
+  outline, clipped inside the box it shares with the clear button, plus the
+  control's focus treatment. The input no longer outlines, so the control
+  carries one complete ring and the underline is never interrupted
+- An arriving recommendation sat below the form, so answering "Find a
+  recommendation" left the user scrolling past the picks, the filters and
+  the submit button to see the result. The result card and every outcome
+  card now scroll into view on arrival — smoothly, or without animation
+  under `prefers-reduced-motion` — and both card types carry a
+  `scroll-margin-top` so nothing lands flush against the viewport edge.
+  The loading card is deliberately excluded, since it sits directly under
+  the button that was just pressed, and re-rolling the queue in place
+  leaves the page where it is. Each new run reveals its own outcome again,
+  so a second failure below the fold is not silently left there, and the
+  result heading no longer scrolls the viewport on its own — the reveal is
+  the only thing that moves the page
 - The suggestion dropdown had no height cap, so a long result list could
   run past the bottom of the viewport with no way to reach the tail
 - Below 700px the folded filter summary butted straight against the
   disclosure title, because the heading stacks there
 - Dead `.anilist-credit` and `.filter-heading` rules, and an unused
   `--text-xl` token, removed from the stylesheet
+- The 64px chapter break the stylesheet had been promising never existed:
+  `.result-region` was dead CSS, so a recommendation, a loading card and an
+  error card all arrived a few pixels under the submit button with no
+  separation from the form that produced them. The margin now sits on
+  `.result-card` and `.message-card` themselves, so every outcome is set off
+  from the selector
+- `img { height: auto }` in the base layer, so cover art with an unexpected
+  intrinsic ratio cannot stretch the box that was sized for a 2:3 plate
 
 - A sequel could be recommended before its prequel. Relation-based
   candidates were already filtered to discovery types, but

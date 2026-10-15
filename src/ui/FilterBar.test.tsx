@@ -222,4 +222,47 @@ describe("FilterBar", () => {
     renderBar();
     expect(screen.getByRole("group", { name: "Format" })).toBeDefined();
   });
+
+  it("offers no way to clear when nothing is narrowed", () => {
+    renderBar();
+    expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+  });
+
+  it("clears the formats and the ceiling in one move", () => {
+    const onChange = vi.fn();
+    render(
+      <FilterBar
+        filters={{ formats: ["MOVIE", "OVA"], maxEpisodes: 12 }}
+        disabled={false}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(onChange).toHaveBeenCalledWith({ formats: [], maxEpisodes: null });
+  });
+
+  it("keeps the clear affordance reachable while the panel is collapsed", () => {
+    renderControlled({ formats: ["TV"], maxEpisodes: 12 });
+    fireEvent.click(disclosure());
+    expect(screen.queryByRole("slider")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.queryByTestId("collapsed-filter-summary")).toBeNull();
+  });
+
+  it("locks the clear affordance while a recommendation is being scored", () => {
+    render(
+      <FilterBar filters={{ formats: ["TV"], maxEpisodes: 12 }} disabled onChange={vi.fn()} />,
+    );
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Clear filters" }).disabled).toBe(
+      true,
+    );
+  });
+
+  it("keeps the episode ceiling beside the control that turns it off", () => {
+    renderBar({ formats: [], maxEpisodes: 24 });
+    const sliderControl = anyLength().closest(".filter-controls");
+    expect(sliderControl?.querySelector('[data-testid="episode-summary"]')).not.toBeNull();
+    expect(sliderControl?.querySelector("input[type='range']")).not.toBeNull();
+  });
 });

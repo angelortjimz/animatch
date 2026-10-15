@@ -1,5 +1,5 @@
 import { useId, useState, type JSX } from "react";
-import { ANIME_FORMATS, ANIME_FORMAT_LABELS, type AnimeFormat } from "@/models/anime";
+import { ANIME_FORMATS, ANIME_FORMAT_LABELS, NO_FILTERS, type AnimeFormat } from "@/models/anime";
 import {
   EPISODE_SLIDER_DEFAULT,
   EPISODE_SLIDER_MAX,
@@ -17,6 +17,12 @@ function toggleFormat(formats: AnimeFormat[], format: AnimeFormat): AnimeFormat[
   return formats.includes(format)
     ? formats.filter((current) => current !== format)
     : ANIME_FORMATS.filter((current) => current === format || formats.includes(current));
+}
+
+function ceilingFill(ceiling: number): number {
+  const span = EPISODE_SLIDER_MAX - EPISODE_SLIDER_MIN;
+  if (span <= 0) return 0;
+  return ((ceiling - EPISODE_SLIDER_MIN) / span) * 100;
 }
 
 export function FilterBar({ filters, disabled, onChange }: FilterBarProps): JSX.Element {
@@ -71,15 +77,27 @@ export function FilterBar({ filters, disabled, onChange }: FilterBarProps): JSX.
             </svg>
           </button>
         </h2>
-        {activeSummary ? (
-          <p className="filter-active" data-testid="collapsed-filter-summary">
-            {activeSummary}
-          </p>
-        ) : (
-          <p className="section-note">
-            Optional. We still aim for 24 recommendations that already match.
-          </p>
-        )}
+        <div className="filter-status">
+          {activeSummary ? (
+            <>
+              <p className="filter-active" data-testid="collapsed-filter-summary">
+                {activeSummary}
+              </p>
+              <button
+                className="filter-clear"
+                type="button"
+                disabled={disabled}
+                onClick={() => onChange(NO_FILTERS)}
+              >
+                Clear filters
+              </button>
+            </>
+          ) : (
+            <p className="section-note">
+              Optional. We still aim for 24 recommendations that already match.
+            </p>
+          )}
+        </div>
       </div>
       <div className="filter-panel" id={panelId} hidden={!open}>
         <div className="filter-row">
@@ -117,27 +135,36 @@ export function FilterBar({ filters, disabled, onChange }: FilterBarProps): JSX.
         </div>
 
         <div className="filter-row">
-          <div className="filter-rail">
-            <label className="filter-label" htmlFor={limitId}>
-              Episodes
-            </label>
-            <label className="unlimited-toggle">
-              <input
-                type="checkbox"
-                checked={unlimited}
-                disabled={disabled}
-                onChange={(event) =>
-                  onChange({
-                    ...filters,
-                    maxEpisodes: event.target.checked ? null : clampMaxEpisodes(ceiling),
-                  })
-                }
-              />
-              Any length
-            </label>
-          </div>
+          <label className="filter-label" htmlFor={limitId}>
+            Episodes
+          </label>
           <div className="filter-controls">
-            <div className="slider-line">
+            <div className="episode-head">
+              <output className="episode-readout" htmlFor={limitId} data-testid="episode-summary">
+                {episodeLabel(filters)}
+              </output>
+              <label className="unlimited-toggle">
+                <input
+                  type="checkbox"
+                  checked={unlimited}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    onChange({
+                      ...filters,
+                      maxEpisodes: event.target.checked ? null : clampMaxEpisodes(ceiling),
+                    })
+                  }
+                />
+                Any length
+              </label>
+            </div>
+            <div className="episode-track" data-disabled={unlimited || disabled}>
+              <span className="episode-rail" aria-hidden="true">
+                <span
+                  className="episode-fill"
+                  style={{ transform: `scaleX(${unlimited ? 0 : ceilingFill(ceiling) / 100})` }}
+                ></span>
+              </span>
               <input
                 className="episode-slider"
                 id={limitId}
@@ -150,10 +177,11 @@ export function FilterBar({ filters, disabled, onChange }: FilterBarProps): JSX.
                 aria-describedby={`${limitId}-help`}
                 onChange={(event) => changeCeiling(Number(event.target.value))}
               />
-              <output className="episode-readout" htmlFor={limitId} data-testid="episode-summary">
-                {episodeLabel(filters)}
-              </output>
             </div>
+            <p className="episode-scale" aria-hidden="true">
+              <span>{EPISODE_SLIDER_MIN}</span>
+              <span>{EPISODE_SLIDER_MAX}+</span>
+            </p>
             <p className="filter-help" id={`${limitId}-help`}>
               Between {EPISODE_SLIDER_MIN} and {ceiling} episodes. Ongoing series with no published
               count are always kept.
