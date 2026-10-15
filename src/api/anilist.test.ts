@@ -599,7 +599,7 @@ describe("AniList retry backoff", () => {
 });
 
 describe("AniList cancellation", () => {
-  it("does not let one caller's abort fail a concurrent search for the same query", async () => {
+  it("shares one in-flight request between concurrent searches and isolates aborts", async () => {
     const resolvers: Array<(value: unknown) => void> = [];
     const fetchMock = vi.fn(
       (_url: string, init: RequestInit) =>
@@ -613,27 +613,25 @@ describe("AniList cancellation", () => {
     const first = new AbortController();
     const second = new AbortController();
     const firstSearch = searchAnime("Cowboy", first.signal);
-    const secondSearch = searchAnime("Cowboy", second.signal);
-    await vi.waitFor(() => expect(resolvers).toHaveLength(2));
+    const secondSearch = searchAnime("cowboy", second.signal);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
 
-    // The two calls must not share one in-flight request.
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-
+    // One caller's abort must not fail the concurrent search it shares a request with.
     first.abort();
     await expect(firstSearch).rejects.toThrow(/cancelled/);
 
-    resolvers[1]?.(dataResponse({ Page: { media: [media] } }));
+    resolvers[0]?.(dataResponse({ Page: { media: [media] } }));
     await expect(secondSearch).resolves.toHaveLength(1);
   });
 
-  it("does not let an abortable search read a cached promise", async () => {
+  it("serves an abortable search from a warm cache entry", async () => {
     const fetchMock = stubFetch(dataResponse({ Page: { media: [media] } }));
     await searchAnime("Cowboy");
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     const fetchMockAfter = stubFetch(dataResponse({ Page: { media: [media] } }));
     await searchAnime("Cowboy", new AbortController().signal);
-    expect(fetchMockAfter).toHaveBeenCalledTimes(1);
+    expect(fetchMockAfter).not.toHaveBeenCalled();
   });
 
   it("rejects without requesting when the signal is already aborted", async () => {
@@ -642,11 +640,11 @@ describe("AniList cancellation", () => {
     controller.abort();
 
     await expect(searchAnime("Cowboy", controller.signal)).rejects.toThrow(/cancelled/);
-    // An abort is terminal: the failed attempt must not be retried.
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // An already-aborted signal is terminal before any request is made.
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("stops retrying once the caller aborts", async () => {
+  it("stops the shared request once the last caller aborts", async () => {
     vi.useFakeTimers();
     const fetchMock = signalAwareFetch(() => errorResponse(503));
 
@@ -661,8 +659,46 @@ describe("AniList cancellation", () => {
     expect(outcome).toBeInstanceOf(DOMException);
     expect((outcome as DOMException).name).toBe("AbortError");
 
-    // No further retries may be scheduled after an abort.
+    // No further retries may be scheduled once the last caller has gone.
     await vi.advanceTimersByTimeAsync(5000);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats case and whitespace variants as one cache entry", async () => {
+    const fetchMock = stubFetch(dataResponse({ Page: { media: [media] } }));
+    await searchAnime("Cowboy  Bebop");
+    await searchAnime("  cowboy bebop ");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("AniList rate limiting", () => {
+  it("stops searching once the budget is nearly spent", async () => {
+    const fetchMock = stubFetch(
+      jsonResponse(
+        { data: { Page: { media: [media] } } },
+        { headers: { "X-RateLimit-Remaining": "2" } },
+      ),
+    );
+
+    await searchAnime("bebop");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await expect(searchAnime("trigun")).rejects.toThrow(/unavailable/i);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps searching while the budget is healthy", async () => {
+    const fetchMock = stubFetch(
+      jsonResponse(
+        { data: { Page: { media: [media] } } },
+        { headers: { "X-RateLimit-Remaining": "12" } },
+      ),
+      dataResponse({ Page: { media: [media] } }),
+    );
+
+    await searchAnime("bebop");
+    await expect(searchAnime("trigun")).resolves.toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

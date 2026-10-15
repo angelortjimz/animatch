@@ -13,10 +13,11 @@ import {
 
 const BASE_URL = "https://graphql.anilist.co";
 const SEARCH_LIMIT = 5;
-export const SEARCH_MIN_LENGTH = 2;
+export const SEARCH_MIN_LENGTH = 3;
 const BATCH_LIMIT = 50;
 const RECOMMENDATION_LIMIT = 25;
 const MAX_RETRIES = 2;
+const SEARCH_RATE_LIMIT_FLOOR = 3;
 
 export class AnilistError extends Error {
   constructor(
@@ -354,10 +355,14 @@ function toDiscoveryCandidate(media: AnilistMedia): DiscoveryCandidate | null {
   };
 }
 
+function abortError(): Error {
+  return new DOMException("The request was cancelled.", "AbortError");
+}
+
 function delay(milliseconds: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
-      reject(new DOMException("The request was cancelled.", "AbortError"));
+      reject(abortError());
       return;
     }
     const timeout = setTimeout(() => {
@@ -366,9 +371,28 @@ function delay(milliseconds: number, signal?: AbortSignal): Promise<void> {
     }, milliseconds);
     function onAbort(): void {
       clearTimeout(timeout);
-      reject(new DOMException("The request was cancelled.", "AbortError"));
+      reject(abortError());
     }
     signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(abortError());
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(abortError());
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error instanceof Error ? error : new Error("The request failed."));
+      },
+    );
   });
 }
 
@@ -398,6 +422,7 @@ async function fetchJson<T>(
         body: JSON.stringify({ query, variables }),
         signal,
       });
+      trackRateLimit(response);
       const payload = (await response.json()) as AnilistResponse<T>;
       const graphQlError = payload.errors?.[0];
       const status = response.ok ? (graphQlError?.status ?? 200) : response.status;
@@ -425,18 +450,73 @@ async function fetchJson<T>(
   throw new AnilistError("We could not connect to AniList. Please try again.");
 }
 
-const cache = new Map<string, Promise<unknown>>();
+let rateLimitRemaining: number | null = null;
 
-function cached<T>(key: string, load: () => Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (signal) return load();
-  const current = cache.get(key) as Promise<T> | undefined;
-  if (current) return current;
-  const request = load().catch((error: unknown) => {
-    cache.delete(key);
-    throw error;
-  });
-  cache.set(key, request);
-  return request;
+function trackRateLimit(response: Response): void {
+  const header = response.headers.get("X-RateLimit-Remaining");
+  if (header === null) return;
+  const remaining = Number(header);
+  if (Number.isFinite(remaining)) rateLimitRemaining = remaining;
+}
+
+function isSearchRateLimited(): boolean {
+  return rateLimitRemaining !== null && rateLimitRemaining <= SEARCH_RATE_LIMIT_FLOOR;
+}
+
+interface CacheEntry<T> {
+  promise: Promise<T>;
+  controller: AbortController;
+  subscribers: number;
+  settled: boolean;
+}
+
+const cache = new Map<string, CacheEntry<unknown>>();
+
+function startEntry<T>(key: string, load: (signal: AbortSignal) => Promise<T>): CacheEntry<T> {
+  const controller = new AbortController();
+  const promise = load(controller.signal);
+  const entry: CacheEntry<T> = { promise, controller, subscribers: 0, settled: false };
+  promise.then(
+    () => {
+      entry.settled = true;
+    },
+    () => {
+      entry.settled = true;
+      cache.delete(key);
+    },
+  );
+  // Every caller may have aborted by the time a shared failure lands; keep the
+  // rejection handled so it never surfaces as an unhandled rejection.
+  promise.catch(() => {});
+  cache.set(key, entry);
+  return entry;
+}
+
+function cached<T>(
+  key: string,
+  load: (signal: AbortSignal) => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (signal?.aborted) return Promise.reject(abortError());
+  const entry = (cache.get(key) as CacheEntry<T> | undefined) ?? startEntry(key, load);
+  entry.subscribers += 1;
+  let released = false;
+  const release = (): void => {
+    if (released) return;
+    released = true;
+    entry.subscribers -= 1;
+    // The request only has value while somebody waits for it: once the last
+    // caller has gone, stop the fetch rather than let it retry unseen.
+    if (entry.subscribers <= 0 && !entry.settled) {
+      entry.controller.abort();
+      cache.delete(key);
+    }
+  };
+  return withAbort(entry.promise, signal).finally(release);
+}
+
+function normalizeQueryKey(query: string): string {
+  return query.toLowerCase().replace(/\s+/g, " ");
 }
 
 export async function searchAnime(
@@ -446,11 +526,14 @@ export async function searchAnime(
   const cleanQuery = query.trim();
   if (cleanQuery.length < SEARCH_MIN_LENGTH) return [];
   const variables = { search: cleanQuery, page: 1, perPage: SEARCH_LIMIT };
-  const key = `search:${cleanQuery}`;
+  const key = `search:${normalizeQueryKey(cleanQuery)}`;
   return cached(
     key,
-    async () => {
-      const response = await fetchJson<AnilistPageResponse>(SEARCH_QUERY, variables, signal);
+    async (requestSignal) => {
+      if (isSearchRateLimited()) {
+        throw new AnilistError("Search is unavailable. Try again.");
+      }
+      const response = await fetchJson<AnilistPageResponse>(SEARCH_QUERY, variables, requestSignal);
       const media = response.Page?.media;
       if (!Array.isArray(media))
         throw new AnilistError("AniList returned an invalid search response.");
@@ -536,4 +619,5 @@ export async function getDiscoveryCandidates(
 
 export function clearAnilistCache(): void {
   cache.clear();
+  rateLimitRemaining = null;
 }
