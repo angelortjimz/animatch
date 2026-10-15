@@ -2,7 +2,9 @@
 
 **Host:** Hostinger Business plan (Node.js Web App flow, GitHub auto-deploy)
 **Architecture:** Option A — pure static client-side SPA, no backend
-**Status:** Awaiting implementation
+**Status:** In progress — implementation order set (§11.3); branch 1 landed.
+Hostinger panel access is unavailable, so every branch except the deploy itself
+proceeds now and deployment is deferred.
 **Date:** 2026-10-15
 
 ---
@@ -31,18 +33,18 @@ Established by inspection, a full local `pnpm check`, and live API probing.
 
 ### 2.1 Current state
 
-| Item | Value |
-| --- | --- |
-| Build | passes — `tsc --noEmit && vite build` |
-| Tests | 274 passing across 13 files |
-| Bundle | 257.27 kB JS (80.55 kB gzip), 19.12 kB CSS (4.24 kB gzip) |
-| Router | none — single URL, so no SPA fallback needed |
-| Persistence | none — memory only |
-| CI | none — no `.github/` directory |
-| LICENSE | absent |
-| `public/` dir | absent — no favicon declared |
-| Error boundary | absent |
-| Preview script | absent |
+| Item           | Value                                                     |
+| -------------- | --------------------------------------------------------- |
+| Build          | passes — `tsc --noEmit && vite build`                     |
+| Tests          | 274 passing across 13 files                               |
+| Bundle         | 257.27 kB JS (80.55 kB gzip), 19.12 kB CSS (4.24 kB gzip) |
+| Router         | none — single URL, so no SPA fallback needed              |
+| Persistence    | none — memory only                                        |
+| CI             | none — no `.github/` directory                            |
+| LICENSE        | absent                                                    |
+| `public/` dir  | absent — no favicon declared                              |
+| Error boundary | absent                                                    |
+| Preview script | absent                                                    |
 
 ### 2.2 AniList rate limit (measured)
 
@@ -78,12 +80,12 @@ x-ratelimit-remaining: 0
 
 ### 2.3 Request cost breakdown
 
-| Action | Requests |
-| --- | --- |
-| Search, one field, current config | 2–4 |
-| Search, one field, tuned config | 1 |
-| Submit, unfiltered path | 5 |
-| Submit, filtered + discovery top-up | ~10 |
+| Action                                   | Requests |
+| ---------------------------------------- | -------- |
+| Search, one field, current config        | 2–4      |
+| Search, one field, tuned config          | 1        |
+| Submit, unfiltered path                  | 5        |
+| Submit, filtered + discovery top-up      | ~10      |
 | Any request under 429, `MAX_RETRIES = 2` | up to 3× |
 
 The retry multiplier is the sharpest edge: **one submit can consume an entire
@@ -104,15 +106,15 @@ Business plan supports the Node.js Web App flow with GitHub auto-deploy.
 
 ### 3.1 hPanel build settings
 
-| Setting | Value | Note |
-| --- | --- | --- |
-| Application type | `vite` | detected from `package.json` |
-| Node version | `22` | **set explicitly** — see risk R1 |
-| Build script | `build` | the *script name*, **not** `pnpm build` |
-| Output directory | `dist` | matches Vite default |
-| Entry file | *(empty)* | static site, no Node server runs |
-| Package manager | `pnpm` | auto-detected from `pnpm-lock.yaml` |
-| Root directory | `/` | |
+| Setting          | Value     | Note                                    |
+| ---------------- | --------- | --------------------------------------- |
+| Application type | `vite`    | detected from `package.json`            |
+| Node version     | `22`      | **set explicitly** — see risk R1        |
+| Build script     | `build`   | the _script name_, **not** `pnpm build` |
+| Output directory | `dist`    | matches Vite default                    |
+| Entry file       | _(empty)_ | static site, no Node server runs        |
+| Package manager  | `pnpm`    | auto-detected from `pnpm-lock.yaml`     |
+| Root directory   | `/`       |                                         |
 
 ### 3.2 Deployment filesystem layout
 
@@ -131,11 +133,11 @@ fallback rule is required.
 
 ### 3.3 First-deploy risks
 
-| ID | Risk | Mitigation |
-| --- | --- | --- |
-| R1 | `engines: ">=20.19.0"` is a range, not a pin; Hostinger expects a concrete version | Set Node `22` explicitly in hPanel |
-| R2 | `packageManager: "pnpm@12.6.0"` may trip corepack if unavailable | If install fails, set package manager to `pnpm` explicitly |
-| R3 | `pnpm-workspace.yaml` sets `allowBuilds: esbuild: false`; a different pnpm major may not recognise the key | Builds locally today; escalate only if the Hostinger build fails |
+| ID  | Risk                                                                                                       | Mitigation                                                       |
+| --- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| R1  | `engines: ">=20.19.0"` is a range, not a pin; Hostinger expects a concrete version                         | Set Node `22` explicitly in hPanel                               |
+| R2  | `packageManager: "pnpm@12.6.0"` may trip corepack if unavailable                                           | If install fails, set package manager to `pnpm` explicitly       |
+| R3  | `pnpm-workspace.yaml` sets `allowBuilds: esbuild: false`; a different pnpm major may not recognise the key | Builds locally today; escalate only if the Hostinger build fails |
 
 ### 3.4 Deploy sequence
 
@@ -205,7 +207,7 @@ currently asserts:
 expect(fetchMock).toHaveBeenCalledTimes(2);
 ```
 
-The stated intent — *"one caller's abort must not fail a concurrent search"* —
+The stated intent — _"one caller's abort must not fail a concurrent search"_ —
 is preserved and strengthened by the fix. The assertion as written encodes
 "no sharing". Rewrite it to assert the real invariant instead: one fetch, both
 callers served, aborting one leaves the other intact.
@@ -269,7 +271,7 @@ directory exists and no icon is declared, so every visitor currently 404s on
 
 ### 6.2 Rewrite `index.html` metadata
 
-Current description — *"A small, deterministic anime recommendation tool."* —
+Current description — _"A small, deterministic anime recommendation tool."_ —
 is accurate for a developer and meaningless to a user or a crawler.
 
 Replace with a user-facing description. Add Open Graph and Twitter card tags,
@@ -312,12 +314,12 @@ Hostinger handles deployment itself via GitHub integration.
 
 New tests required for Phase 1:
 
-| Change | Test |
-| --- | --- |
-| 4.3 cache repair | concurrent same-query searches issue one fetch; aborting one caller does not fail the other |
-| 4.3 cache repair | an abortable caller no longer bypasses a warm cache entry |
-| 4.4 key normalization | case and whitespace variants resolve to one request |
-| 4.5 header gating | low `X-RateLimit-Remaining` suppresses further searches |
+| Change                | Test                                                                                        |
+| --------------------- | ------------------------------------------------------------------------------------------- |
+| 4.3 cache repair      | concurrent same-query searches issue one fetch; aborting one caller does not fail the other |
+| 4.3 cache repair      | an abortable caller no longer bypasses a warm cache entry                                   |
+| 4.4 key normalization | case and whitespace variants resolve to one request                                         |
+| 4.5 header gating     | low `X-RateLimit-Remaining` suppresses further searches                                     |
 
 Tests must use realistic `Headers` objects — a `Map` returns `undefined` where a
 real one returns `null`, which silently hides header-handling bugs. Use fake
@@ -344,7 +346,7 @@ revisiting the caching proxy decision.
 
 ### 9.1 `PRODUCT.md`
 
-Line 84 currently lists *"Deployment target and hosting"* under
+Line 84 currently lists _"Deployment target and hosting"_ under
 **"Undecided, and future work must not invent an answer."** Move it to a decided
 position recording Hostinger Business and the client-only architecture.
 
@@ -423,15 +425,23 @@ pass, and should not arrive bundled with unrelated edits.
 
 ### 11.3 Sequence
 
-Ordered by risk, not convenience:
+Ordered by risk, not convenience. Each branch merges to `main` on its own, and
+is verified with `pnpm check` before it does.
 
-| # | Branch | Contents | Why here |
-| --- | --- | --- | --- |
-| 0 | `chore/restore-docs` | Re-track `DESIGN.md`, `PRODUCT.md`, `plan.md` under `docs/` | See §11.6 — currently untracked |
-| 1 | `ci/quality-gate` | §7 CI workflow | Gates every later PR; no product risk |
-| 2 | `site/deploy-baseline` | §6 favicon, meta, `LICENSE`, preview script | Low risk; proves the deploy pipeline end to end |
-| 3 | `api/search-request-reduction` | §4 debounce, cache repair, header gating | The risky change, isolated and revertable |
-| 4 | `app/production-resilience` | §5 error boundary, batch cache, timeout | Independent of Phase 1 |
+| #   | Branch                         | Contents                                    | Why here                                                | Status   |
+| --- | ------------------------------ | ------------------------------------------- | ------------------------------------------------------- | -------- |
+| 1   | `ci/quality-gate`              | §7 CI workflow                              | Gates every later PR; no product risk                   | **Done** |
+| 2   | `site/deploy-baseline`         | §6 favicon, meta, `LICENSE`, preview script | Low risk; proves the deploy pipeline end to end         | Pending  |
+| 3   | `api/search-request-reduction` | §4 debounce, cache repair, header gating    | The risky change, isolated and revertable               | Pending  |
+| 4   | `app/production-resilience`    | §5 error boundary, batch cache, timeout     | Independent of Phase 1                                  | Pending  |
+| 5   | `chore/git-hooks`              | §12 pre-push hook, `prepare` script         | Depends on nothing; last because it is pure convenience | Pending  |
+
+Hostinger panel access is currently unavailable, so the deploy steps in §3.4 —
+connecting GitHub, confirming the build settings, and the first build — are
+deferred. Every branch can still be authored, `pnpm check`-verified and merged
+ahead of that first deploy; nothing in branches 1–5 requires the panel. The
+first live build (and its R1/R2/R3 risks) remains the moment to arrive at with
+`main` already CI-gated and baseline-proven.
 
 **Do not make the Phase 1 change the first deploy.** If the first Hostinger
 build fails on risk R1 (`engines` is a range, not a pin), R2 (corepack versus
@@ -445,7 +455,7 @@ that actually buys: Hostinger's build script is `build`, which expands to
 or test failures. Without it, a failing test merges cleanly and deploys.
 
 Collapsing to two branches — CI, then everything else — is defensible if four
-pull requests feels excessive. Four remains the preference, for the §4.3
+pull requests feels excessive. Five remains the preference, for the §4.3
 isolation alone.
 
 ### 11.4 Per-branch requirements
@@ -507,18 +517,18 @@ location itself is reconsidered.
 
 ### 12.1 What already exists, and what is missing
 
-`pnpm check` already runs lint, format, test, and build. The gap is *when* it
+`pnpm check` already runs lint, format, test, and build. The gap is _when_ it
 runs — today it runs only when a human remembers.
 
 The checks have materially different costs, which is what makes hook design a
 real decision rather than a default:
 
-| Check | Approx. cost | Consequence of failure |
-| --- | --- | --- |
-| `format:check` | ~1s | Trivial — autofixable |
-| `lint` | ~3s | Low |
-| `test` | ~8s | Medium — 274 tests |
-| `build` | ~1s | High, but only matters at deploy |
+| Check          | Approx. cost | Consequence of failure           |
+| -------------- | ------------ | -------------------------------- |
+| `format:check` | ~1s          | Trivial — autofixable            |
+| `lint`         | ~3s          | Low                              |
+| `test`         | ~8s          | Medium — 274 tests               |
+| `build`        | ~1s          | High, but only matters at deploy |
 
 Running all four on every commit costs roughly 13s of friction to catch
 problems that `pnpm format` fixes in two seconds. That mismatch is the usual
