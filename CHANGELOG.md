@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- An error boundary around the app. A render crash previously produced a blank
+  page with no diagnostic surface at all, because `console.log` is deliberately
+  absent from `src/`. The boundary catches the failure and shows the existing
+  plain-language error card with a Reload action, so the raw error never reaches the user
+
 - Search now reads AniList's `X-RateLimit-Remaining` response header and refuses
   to auto-fire once the budget falls to three requests or fewer, surfacing the
   existing "Search is unavailable. Try again." state instead of spending the
@@ -185,6 +190,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `getAnimeBatch` results are cached on the sorted, de-duplicated id list, so a
+  repeat submit with the same picks reuses the metadata already fetched instead
+  of re-requesting it. The internal 50-per-request chunking stays inside the one cached load
+- The submit deadline rose from 20s to 45s. A submit costs around five requests
+  unfiltered and ten with discovery top-up, and under AniList's degraded rate
+  limit a single request can legitimately wait out a `Retry-After` longer than
+  the old deadline, so it could fail a run that was about to succeed. The
+  slow-wait message and Cancel button still cover the wait
 - The search debounce rose from 300ms to 600ms and the minimum query length from
   2 to 3 characters, cutting the requests a session fires against a limit
   measured at 30/minute. Results arrive about 300ms later, and a two-character

@@ -394,6 +394,16 @@ describe("AniList requests", () => {
     expect(anime.map((item) => item.id)).toEqual(ids);
   });
 
+  it("serves a repeated batch from cache and ignores id order", async () => {
+    const fetchMock = stubFetch(
+      dataResponse({ Page: { media: [media, { ...media, id: 2, idMal: 2 }] } }),
+    );
+
+    await getAnimeBatch([2, 1]);
+    await getAnimeBatch([1, 2]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("lets AniList narrow the format instead of fetching a page we would thin out", async () => {
     const fetchMock = stubFetch(
       dataResponse({ Page: { media: [{ id: 9, format: "MOVIE", episodes: 1, popularity: 800 }] } }),
@@ -582,6 +592,9 @@ describe("AniList retry backoff", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(honoured).toHaveBeenCalledTimes(2);
     expect((await pending).id).toBe(1);
+
+    // A fresh cache, so this second scenario is not served from the first's entry.
+    clearAnilistCache();
 
     // "soon" is not a number, so the exponential backoff applies instead.
     const ignored = stubFetch(

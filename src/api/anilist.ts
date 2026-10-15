@@ -568,23 +568,30 @@ export function getAnimeConnections(id: number): Promise<AnimeConnections> {
   });
 }
 
-export async function getAnimeBatch(ids: number[]): Promise<Anime[]> {
+export function getAnimeBatch(ids: number[]): Promise<Anime[]> {
   const uniqueIds = [...new Set(ids)];
-  if (uniqueIds.length === 0) return [];
-  const anime: Anime[] = [];
-  for (let offset = 0; offset < uniqueIds.length; offset += BATCH_LIMIT) {
-    const chunk = uniqueIds.slice(offset, offset + BATCH_LIMIT);
-    const response = await fetchJson<AnilistPageResponse>(BATCH_QUERY, {
-      ids: chunk,
-      page: 1,
-      perPage: chunk.length,
-    });
-    const media = response.Page?.media;
-    if (!Array.isArray(media))
-      throw new AnilistError("AniList returned an invalid batch response.");
-    anime.push(...media.map(normalizeAnime));
-  }
-  return anime;
+  if (uniqueIds.length === 0) return Promise.resolve([]);
+  const key = `batch:${[...uniqueIds].sort((a, b) => a - b).join(",")}`;
+  return cached(key, async (signal) => {
+    const anime: Anime[] = [];
+    for (let offset = 0; offset < uniqueIds.length; offset += BATCH_LIMIT) {
+      const chunk = uniqueIds.slice(offset, offset + BATCH_LIMIT);
+      const response = await fetchJson<AnilistPageResponse>(
+        BATCH_QUERY,
+        {
+          ids: chunk,
+          page: 1,
+          perPage: chunk.length,
+        },
+        signal,
+      );
+      const media = response.Page?.media;
+      if (!Array.isArray(media))
+        throw new AnilistError("AniList returned an invalid batch response.");
+      anime.push(...media.map(normalizeAnime));
+    }
+    return anime;
+  });
 }
 
 export interface DiscoveryRequest {
