@@ -240,7 +240,12 @@ export function App(): JSX.Element {
       />
       <footer className="credit">
         Anime data and cover art from{" "}
-        <a href="https://anilist.co" target="_blank" rel="noopener noreferrer">
+        <a
+          className="anilist-link"
+          href="https://anilist.co"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           AniList
         </a>
         . Recommendations are generated on your device and are not affiliated with AniList.

@@ -17,18 +17,82 @@ function ControlledBar({ initial }: { initial: RecommendationFilters }) {
 function renderBar(filters: RecommendationFilters = { formats: [], maxEpisodes: null }) {
   const onChange = vi.fn();
   const view = render(<FilterBar filters={filters} disabled={false} onChange={onChange} />);
+  openFilters();
   return { onChange, ...view };
 }
 
 function renderControlled(initial: RecommendationFilters) {
-  return render(<ControlledBar initial={initial} />);
+  const view = render(<ControlledBar initial={initial} />);
+  openFilters();
+  return view;
 }
+
+/** The filters start collapsed, so every control test opens them first. */
+function openFilters(): void {
+  fireEvent.click(disclosure());
+}
+
+const disclosure = (): HTMLElement => screen.getByRole("button", { name: "Narrow it down" });
 
 const chip = (label: string): HTMLElement => screen.getByRole("button", { name: label });
 const slider = () => screen.getByRole<HTMLInputElement>("slider");
 const anyLength = () => screen.getByRole<HTMLInputElement>("checkbox", { name: "Any length" });
 
 describe("FilterBar", () => {
+  it("keeps the filters out of the way until they are asked for", () => {
+    render(
+      <FilterBar
+        filters={{ formats: [], maxEpisodes: null }}
+        disabled={false}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(disclosure().getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("slider")).toBeNull();
+  });
+
+  it("reveals the filters when the disclosure is pressed", () => {
+    render(
+      <FilterBar
+        filters={{ formats: [], maxEpisodes: null }}
+        disabled={false}
+        onChange={vi.fn()}
+      />,
+    );
+    openFilters();
+    expect(disclosure().getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("slider")).toBeDefined();
+  });
+
+  it("hides them again on a second press, without losing the choices", () => {
+    renderControlled({ formats: ["MOVIE"], maxEpisodes: null });
+    fireEvent.click(disclosure());
+    expect(screen.queryByRole("slider")).toBeNull();
+    expect(screen.getByTestId("collapsed-filter-summary").textContent).toContain("Movies");
+  });
+
+  it("names the active narrowing while collapsed, and the promise while not", () => {
+    const { rerender } = render(
+      <FilterBar
+        filters={{ formats: ["MOVIE"], maxEpisodes: 12 }}
+        disabled={false}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("collapsed-filter-summary").textContent).toBe(
+      "Movies, up to 12 episodes",
+    );
+    rerender(
+      <FilterBar
+        filters={{ formats: [], maxEpisodes: null }}
+        disabled={false}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("collapsed-filter-summary")).toBeNull();
+    expect(screen.getByText(/24 recommendations that already match/)).toBeDefined();
+  });
+
   it("offers every format AniList can report", () => {
     renderBar();
     for (const format of ANIME_FORMATS) {
@@ -120,10 +184,14 @@ describe("FilterBar", () => {
   });
 
   it("adopts a ceiling set from outside the slider", () => {
-    const { rerender } = renderControlled({ formats: [], maxEpisodes: 24 });
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <FilterBar filters={{ formats: [], maxEpisodes: 24 }} disabled={false} onChange={onChange} />,
+    );
+    openFilters();
     fireEvent.click(chip("Movie"));
     rerender(
-      <FilterBar filters={{ formats: [], maxEpisodes: 36 }} disabled={false} onChange={vi.fn()} />,
+      <FilterBar filters={{ formats: [], maxEpisodes: 36 }} disabled={false} onChange={onChange} />,
     );
     expect(slider().value).toBe("36");
   });
@@ -142,6 +210,7 @@ describe("FilterBar", () => {
 
   it("locks every control while a recommendation is being scored", () => {
     render(<FilterBar filters={{ formats: [], maxEpisodes: null }} disabled onChange={vi.fn()} />);
+    openFilters();
     for (const format of ANIME_FORMATS) {
       expect(chip(ANIME_FORMAT_LABELS[format]).hasAttribute("disabled")).toBe(true);
     }

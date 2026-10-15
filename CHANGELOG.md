@@ -114,6 +114,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The unavailable state names the field to clear ("Anime 3 is no longer
   listed") and marks that field `aria-invalid`, replacing a three-way
   guess across visually identical inputs
+- A collapsible filter section. The format chips and the episode ceiling now
+  sit behind a "Narrow it down" disclosure that starts closed, so the
+  one-shot viewer reaches the submit button without nine controls in the
+  way, while the fold's right-hand slot names the active narrowing
+  ("Movies, up to 12 episodes") whenever filters are in force. The panel is
+  a real disclosure — `aria-expanded`/`aria-controls`, hidden while
+  folded, and both rows hidden from the tab order with it
+- Tests for the collapse: the panel stays out of the DOM by default, opens
+  on press, closes again without losing the choices, and keeps reporting
+  the active narrowing while folded
 
 ### Changed
 
@@ -227,7 +237,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - React 19 (`react`, `react-dom`) with `@vitejs/plugin-react` — the UI is
   now component-based (`src/App.tsx`, `src/main.tsx`, `src/ui/`)
 
-### Changed
+- The filters read as one fold in the page rather than a paragraph between
+  two loud elements: the fold row sits in its own band with breathing room
+  above and below, and the rule at the top of it draws in from the left as
+  a terracotta crease when the panel opens — the same device that opens the
+  result card, at the fold's own scale
+- The active narrowing while folded is terracotta bold text instead of a
+  rounded pill, keeping the section's only colour on the word that matters
+- Format toggles are square, like every other control on the page; the pill
+  is now reserved for read-only genre chips, so a control and a label are no
+  longer the same shape
+- The three search fields read as cells in a spec table, matching the
+  filter rows' rail-and-hairline structure, and the focused field carries a
+  terracotta bottom edge so the live edge of the form is unmistakable
+- One shared 160ms easing across the hoverable controls (chips, clear,
+  retry, re-roll, suggestion rows, credit link), which previously snapped
+  while the submit button and the fold eased
 
 - Retry decisions in the API client go through a single `isRetryable(status)`
   helper instead of repeating the condition in the request and catch paths
@@ -303,6 +328,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `DETAIL_CONCURRENCY` (no longer needed with batched fetching)
 
 ### Fixed
+
+- The suggestion dropdown had no height cap, so a long result list could
+  run past the bottom of the viewport with no way to reach the tail
+- Below 700px the folded filter summary butted straight against the
+  disclosure title, because the heading stacks there
+- Dead `.anilist-credit` and `.filter-heading` rules, and an unused
+  `--text-xl` token, removed from the stylesheet
 
 - A sequel could be recommended before its prequel. Relation-based
   candidates were already filtered to discovery types, but

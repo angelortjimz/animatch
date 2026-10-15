@@ -589,7 +589,15 @@ describe("App", () => {
 
     const formatChip = (label: string): HTMLElement => screen.getByRole("button", { name: label });
 
+    function openFilters(): void {
+      const toggle = screen.getByRole("button", { name: "Narrow it down" });
+      if (toggle.getAttribute("aria-expanded") === "false") fireEvent.click(toggle);
+    }
+
     async function narrow(): Promise<void> {
+      await flush(() => {
+        openFilters();
+      });
       await flush(() => {
         fireEvent.click(formatChip("Movie"));
       });
@@ -601,6 +609,10 @@ describe("App", () => {
       await chooseThreeDistinct();
       recommendMock.mockResolvedValue(queue(["First Pick", "Second Pick"]));
       await submit();
+    });
+
+    it("keeps the filters collapsed until the user opens them", () => {
+      expect(screen.queryByRole("slider")).toBeNull();
     });
 
     it("scores the first request without any narrowing", async () => {
@@ -620,6 +632,9 @@ describe("App", () => {
     });
 
     it("passes the chosen episode ceiling into the next request", async () => {
+      await flush(() => {
+        openFilters();
+      });
       await flush(() => {
         fireEvent.change(screen.getByRole("slider"), { target: { value: "24" } });
       });
@@ -651,7 +666,9 @@ describe("App", () => {
       expect(screen.queryByText(/Matched to your filters/)).toBeNull();
       await narrow();
       await submit();
-      expect(screen.getByText(/Movies, any length/)).toBeDefined();
+      expect(document.querySelector(".active-filters")?.textContent).toContain(
+        "Movies, any length",
+      );
     });
 
     it("restores the filters to the ones the result was scored with on undo", async () => {
