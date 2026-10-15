@@ -82,9 +82,14 @@ Hard constraints:
 Undecided, and future work must not invent an answer:
 
 - Deployment target and hosting.
-- Whether the internal numeric score ever surfaces in the UI.
 - Whether the input layer is ever replaced by a MyAnimeList profile — `plan.md` discusses it as a
   future idea, which is not a commitment.
+
+Decided, and no longer open:
+
+- Score visibility. AniList's public community score is shown on the result card, as a caption
+  alongside the studio and episode metadata. The engine's own numeric score never surfaces: it is
+  an internal mechanism, and the card's claims stay traceable to public metadata or the user's picks.
 
 ## Brand Commitments
 

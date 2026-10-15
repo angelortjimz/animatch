@@ -148,22 +148,41 @@ describe("FilterBar", () => {
     expect(slider().max).toBe(String(EPISODE_SLIDER_MAX));
   });
 
+  it("labels the scale with the ceiling the slider can actually express", () => {
+    const { container } = renderBar();
+    expect(container.querySelector(".episode-scale")?.textContent).toBe(
+      `${EPISODE_SLIDER_MIN}${EPISODE_SLIDER_MAX}`,
+    );
+  });
+
   it("clamps a ceiling dragged below the floor back to one episode", () => {
     const { onChange } = renderBar({ formats: [], maxEpisodes: 24 });
     fireEvent.change(slider(), { target: { value: "0" } });
     expect(onChange).toHaveBeenCalledWith({ formats: [], maxEpisodes: EPISODE_SLIDER_MIN });
   });
 
-  it("disables the slider while any length is selected", () => {
+  it("keeps the slider live while any length is selected", () => {
     renderBar();
-    expect(slider().disabled).toBe(true);
     expect(anyLength().checked).toBe(true);
+    expect(slider().disabled).toBe(false);
   });
 
-  it("leaves the ceiling untouched while any length is on", () => {
-    const { onChange } = renderBar();
+  it("applies the ceiling and unticks any length when the slider is moved", () => {
+    renderControlled({ formats: [], maxEpisodes: null });
     fireEvent.change(slider(), { target: { value: "30" } });
-    expect(onChange).not.toHaveBeenCalled();
+    expect(anyLength().checked).toBe(false);
+    expect(screen.getByTestId("episode-summary").textContent).toBe("Up to 30 episodes");
+  });
+
+  it("explains that no ceiling applies only while any length is on", () => {
+    renderControlled({ formats: [], maxEpisodes: null });
+    expect(screen.getByText(/Move the slider to set a ceiling/)).toBeDefined();
+    fireEvent.change(slider(), { target: { value: "30" } });
+    expect(
+      screen.getByText(
+        /Between 1 and 30 episodes. Ongoing series with no published count are always kept/,
+      ),
+    ).toBeDefined();
   });
 
   it("turns the ceiling off when any length is ticked", () => {

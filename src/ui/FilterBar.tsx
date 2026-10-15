@@ -41,7 +41,7 @@ export function FilterBar({ filters, disabled, onChange }: FilterBarProps): JSX.
   function changeCeiling(value: number): void {
     const next = clampMaxEpisodes(value);
     setCeiling(next);
-    if (filters.maxEpisodes !== null) onChange({ ...filters, maxEpisodes: next });
+    onChange({ ...filters, maxEpisodes: next });
   }
 
   const activeSummary = filterLabel(filters);
@@ -158,11 +158,11 @@ export function FilterBar({ filters, disabled, onChange }: FilterBarProps): JSX.
                 Any length
               </label>
             </div>
-            <div className="episode-track" data-disabled={unlimited || disabled}>
+            <div className="episode-track" data-disabled={disabled}>
               <span className="episode-rail" aria-hidden="true">
                 <span
                   className="episode-fill"
-                  style={{ transform: `scaleX(${unlimited ? 0 : ceilingFill(ceiling) / 100})` }}
+                  style={{ transform: `scaleX(${ceilingFill(ceiling) / 100})` }}
                 ></span>
               </span>
               <input
@@ -173,18 +173,19 @@ export function FilterBar({ filters, disabled, onChange }: FilterBarProps): JSX.
                 max={EPISODE_SLIDER_MAX}
                 step={1}
                 value={ceiling}
-                disabled={disabled || unlimited}
+                disabled={disabled}
                 aria-describedby={`${limitId}-help`}
                 onChange={(event) => changeCeiling(Number(event.target.value))}
               />
             </div>
             <p className="episode-scale" aria-hidden="true">
               <span>{EPISODE_SLIDER_MIN}</span>
-              <span>{EPISODE_SLIDER_MAX}+</span>
+              <span>{EPISODE_SLIDER_MAX}</span>
             </p>
             <p className="filter-help" id={`${limitId}-help`}>
-              Between {EPISODE_SLIDER_MIN} and {ceiling} episodes. Ongoing series with no published
-              count are always kept.
+              {unlimited
+                ? "Any length is allowed. Move the slider to set a ceiling."
+                : `Between ${EPISODE_SLIDER_MIN} and ${ceiling} episodes. Ongoing series with no published count are always kept.`}
             </p>
           </div>
         </div>

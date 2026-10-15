@@ -51,7 +51,7 @@ export const DISCOVERY_MAX_PAGES = 2;
 
 export const EPISODE_SLIDER_MIN = 1;
 
-export const EPISODE_SLIDER_MAX = 200;
+export const EPISODE_SLIDER_MAX = 120;
 
 export const EPISODE_SLIDER_DEFAULT = 24;
 

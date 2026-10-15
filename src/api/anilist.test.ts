@@ -40,6 +40,7 @@ const media = {
   coverImage: { large: "cover.jpg" },
   isAdult: false,
   popularity: 1000,
+  averageScore: 84,
 };
 
 /**
@@ -128,8 +129,15 @@ describe("AniList normalization", () => {
       themes: ["Space", "Philosophy"],
       mainStudios: ["Sunrise"],
       popularity: 1000,
+      score: 84,
       isAdult: false,
     });
+  });
+
+  it("keeps AniList's score, and reports an unrated title as having none", () => {
+    expect(normalizeAnime(media).score).toBe(84);
+    expect(normalizeAnime({ ...media, averageScore: null }).score).toBeNull();
+    expect(normalizeAnime({ ...media, averageScore: 0 }).score).toBeNull();
   });
 
   it("maps format casing and falls back through title languages", () => {

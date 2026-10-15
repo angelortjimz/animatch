@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { anilistUrl, metaLine, studioLine } from "./format";
+import { anilistUrl, metaLine, scoreLine, studioLine } from "./format";
 
 describe("metaLine", () => {
   it("formats the full metadata a fan looks for", () => {
@@ -20,6 +20,18 @@ describe("studioLine", () => {
     expect(studioLine(["Sunrise"])).toBe("Sunrise");
     expect(studioLine(["Sunrise", "Madhouse"])).toBe("Sunrise, Madhouse");
     expect(studioLine([])).toBe("");
+  });
+});
+
+describe("scoreLine", () => {
+  it("reads AniList's 0-100 average on the ten point scale people expect", () => {
+    expect(scoreLine(84)).toBe("AniList score 8.4 / 10");
+    expect(scoreLine(100)).toBe("AniList score 10.0 / 10");
+    expect(scoreLine(7)).toBe("AniList score 0.7 / 10");
+  });
+
+  it("reports nothing rather than a figure for an unrated title", () => {
+    expect(scoreLine(null)).toBeNull();
   });
 });
 

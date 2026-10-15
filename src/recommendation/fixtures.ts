@@ -19,6 +19,7 @@ export const anime = (id: number, overrides: Partial<Anime> = {}): Anime => ({
   themes: ["Psychological"],
   mainStudios: ["Studio A"],
   popularity: 100,
+  score: 82,
   isAdult: false,
   relations: [],
   ...overrides,

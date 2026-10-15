@@ -90,6 +90,18 @@ describe("ResultRegion", () => {
     expect(screen.getByRole("list", { name: "Genres" }).textContent).toContain("Mystery");
   });
 
+  it("reports AniList's score with the other metadata", () => {
+    renderRegion(recommended([recommendation(7, { anime: anime(7, { score: 84 }) })]));
+
+    expect(screen.getByText("AniList score 8.4 / 10")).toBeDefined();
+  });
+
+  it("shows no figure for a title AniList has not rated", () => {
+    renderRegion(recommended([recommendation(7, { anime: anime(7, { score: null }) })]));
+
+    expect(screen.queryByText(/AniList score/)).toBeNull();
+  });
+
   it("renders a filled placeholder when cover art is missing", () => {
     const { container } = renderRegion(
       recommended([recommendation(7, { anime: anime(7, { imageUrl: null }) })]),

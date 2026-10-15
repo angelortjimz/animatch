@@ -70,6 +70,7 @@ interface AnilistMedia {
   isAdult?: boolean | null;
   type?: string | null;
   popularity?: number | null;
+  averageScore?: number | null;
   relations?: {
     edges?: Array<{
       relationType?: string | null;
@@ -157,6 +158,7 @@ const BATCH_QUERY = `
         coverImage { large medium }
         isAdult
         popularity
+        averageScore
         relations {
           edges {
             relationType
@@ -207,6 +209,12 @@ function requiredId(media: AnilistMedia): number {
     throw new AnilistError("The anime response did not include a valid identifier.");
   }
   return media.id;
+}
+
+function scoreOf(media: AnilistMedia): number | null {
+  const score = media.averageScore;
+  if (typeof score !== "number" || !Number.isFinite(score) || score <= 0) return null;
+  return score;
 }
 
 function titleOf(media: Pick<AnilistMedia, "title">): string | null {
@@ -289,6 +297,7 @@ export function normalizeAnime(media: AnilistMedia): Anime {
     themes: themes(media),
     mainStudios: mainStudios(media),
     popularity: media.popularity ?? 0,
+    score: scoreOf(media),
     isAdult: media.isAdult ?? false,
     relations: animeRelations(media),
   };

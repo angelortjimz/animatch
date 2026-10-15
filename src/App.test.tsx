@@ -636,15 +636,32 @@ describe("App", () => {
         openFilters();
       });
       await flush(() => {
-        fireEvent.change(screen.getByRole("slider"), { target: { value: "24" } });
-      });
-      await flush(() => {
-        fireEvent.click(screen.getByRole("checkbox", { name: "Any length" }));
+        fireEvent.change(screen.getByRole("slider"), { target: { value: "30" } });
       });
       await submit();
       expect(recommendMock).toHaveBeenLastCalledWith(expect.anything(), {
         formats: [],
-        maxEpisodes: 24,
+        maxEpisodes: 30,
+      });
+    });
+
+    it("reads a ceiling moved while any length is on, and drops that choice", async () => {
+      await flush(() => {
+        openFilters();
+      });
+      expect(screen.getByRole<HTMLInputElement>("checkbox", { name: "Any length" }).checked).toBe(
+        true,
+      );
+      await flush(() => {
+        fireEvent.change(screen.getByRole("slider"), { target: { value: "30" } });
+      });
+      expect(screen.getByRole<HTMLInputElement>("checkbox", { name: "Any length" }).checked).toBe(
+        false,
+      );
+      await submit();
+      expect(recommendMock).toHaveBeenLastCalledWith(expect.anything(), {
+        formats: [],
+        maxEpisodes: 30,
       });
     });
 

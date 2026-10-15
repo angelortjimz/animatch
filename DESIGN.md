@@ -360,6 +360,8 @@ text on one line.
 
 Opens with a 3px Slate rule that draws in from the left over 550ms. Head is an eyebrow plus a
 right-aligned queue position (`1 of 24`) above a hairline. Cover art sits on the Plate shadow.
+Under the title, the metadata reports on the answer in Caption: the meta line, the studio credit,
+and the AniList score — all Muted Ink, with no treatment of its own beyond the caption size.
 Stale state greys the cover, title and chips to `grayscale(1)`, desaturates the eyebrow, and
 swaps the 3px rule to Strong Rule — the whole card steps back rather than disappearing.
 

@@ -497,6 +497,7 @@
 
   .queue-position,
   .studio-credit,
+  .score-line,
   .native-title {
     color: var(--ink-subtle);
     font-size: var(--text-xs);

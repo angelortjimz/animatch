@@ -37,6 +37,7 @@ export interface Anime extends AnimeSearchResult {
   themes: string[];
   mainStudios: string[];
   popularity: number;
+  score: number | null;
   isAdult: boolean;
   relations: AnimeRelation[];
 }

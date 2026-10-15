@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- The AniList community score now sits with the other stats on a result card, as
+  "AniList score 8.4 / 10" under the studio credit. The score was never
+  requested before: `averageScore` joins `BATCH_QUERY`, `Anime` carries a
+  validated `score: number | null`, and the 0-100 average is presented on the
+  ten point scale people expect. A title AniList has not rated shows no figure
+  at all rather than a zero, and the internal ranking score stays hidden
+- Tests for it: the score surviving normalization, an unrated title reporting
+  none, the ten point conversion, its placement on the card, and its absence
+  when there is nothing to report
+
 - `DESIGN.md`, the visual system extracted from the existing implementation:
   the "Broadsheet Desk" north star, the Press Red / Press Blue / Slate palette on
   uncoated stock, the two-voice Georgia-and-sans type split, the flat-by-default
@@ -147,6 +157,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The episode ceiling tops out at 120 episodes instead of 200. 200 was far past
+  the point where a ceiling still describes anything — most long-running
+  series the slider could reach are ones a reader would already rule out. The
+  scale's right-hand label dropped its `+`, which had been claiming more than
+  the slider could express at any ceiling
+- The slider is no longer blocked while "Any length" is selected. Moving it
+  applies the ceiling and unticks the box in the same change, since "any
+  length" is just the absence of a ceiling rather than a separate mode. The
+  remembered ceiling, clearing the filters, and undo all behave as before. The
+  rail fill now tracks the thumb, because a slider that can be dragged must not
+  look inert, and the help line reads "Any length is allowed. Move the slider
+  to set a ceiling." while the box is ticked instead of describing a ceiling
+  that is not in force
 - The "Matched to your filters" line on a result card no longer butts against
   the recommendation above it. It stays exactly the plain single sentence it
   always was — same sans, same caption size, same quiet tone — but now opens

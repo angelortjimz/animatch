@@ -2,7 +2,7 @@ import { useEffect, useRef, type JSX, type RefObject } from "react";
 import type { Recommendation, RecommendationFilters } from "@/models/anime";
 import type { UiState } from "@/models/ui";
 import { filterLabel } from "@/recommendation/filters";
-import { anilistUrl, metaLine, studioLine } from "./format";
+import { anilistUrl, metaLine, scoreLine, studioLine } from "./format";
 
 interface ResultRegionProps {
   ui: UiState;
@@ -100,6 +100,7 @@ function RecommendationCard({
 }): JSX.Element {
   const anime = recommendation.anime;
   const studios = studioLine(anime.mainStudios);
+  const score = scoreLine(anime.score);
   const activeFilters = filterLabel(filters);
   return (
     <section
@@ -149,6 +150,7 @@ function RecommendationCard({
           {anime.nativeTitle ? <p className="native-title">{anime.nativeTitle}</p> : null}
           <p className="meta">{metaLine(anime) || "Anime"}</p>
           {studios ? <p className="studio-credit">Studio: {studios}</p> : null}
+          {score ? <p className="score-line">{score}</p> : null}
           <GenreChips genres={anime.genres} />
           <h3 className="reason-heading">Why this one</h3>
           <ul className="reason-list">
