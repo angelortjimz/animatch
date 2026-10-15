@@ -434,7 +434,7 @@ is verified with `pnpm check` before it does.
 | 2   | `site/deploy-baseline`         | §6 favicon, meta, `LICENSE`, preview script | Low risk; proves the deploy pipeline end to end         | **Done** |
 | 3   | `api/search-request-reduction` | §4 debounce, cache repair, header gating    | The risky change, isolated and revertable               | **Done** |
 | 4   | `app/production-resilience`    | §5 error boundary, batch cache, timeout     | Independent of Phase 1                                  | **Done** |
-| 5   | `chore/git-hooks`              | §12 pre-push hook, `prepare` script         | Depends on nothing; last because it is pure convenience | Pending  |
+| 5   | `chore/git-hooks`              | §12 pre-push hook, `prepare` script         | Depends on nothing; last because it is pure convenience | **Done** |
 
 Hostinger panel access is currently unavailable, so the deploy steps in §3.4 —
 connecting GitHub, confirming the build settings, and the first build — are
