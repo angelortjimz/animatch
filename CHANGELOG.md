@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A GitHub Actions CI workflow (`.github/workflows/ci.yml`) running
+  `pnpm install --frozen-lockfile` and `pnpm check` on every pull request and
+  push to `main`. It enables corepack rather than pinning a pnpm version, so
+  the `packageManager` field stays the single source of truth. This is a
+  quality gate, not the deploy mechanism: Hostinger builds with the `build`
+  script alone, which type-checks but runs no lint, format or tests, so
+  without CI a failing test could merge and deploy
+
 - The AniList community score now sits with the other stats on a result card, as
   "AniList score 8.4 / 10" under the studio credit. The score was never
   requested before: `averageScore` joins `BATCH_QUERY`, `Anime` carries a
