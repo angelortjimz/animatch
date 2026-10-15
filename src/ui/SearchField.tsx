@@ -10,6 +10,7 @@ interface SearchFieldProps {
   pickedIds: number[];
   restoreToken: number;
   restoredSelection: AnimeSearchResult | null;
+  invalid?: boolean;
   onSelectionChange: (selection: AnimeSearchResult | null) => void;
 }
 
@@ -19,6 +20,7 @@ export function SearchField({
   pickedIds,
   restoreToken,
   restoredSelection,
+  invalid,
   onSelectionChange,
 }: SearchFieldProps): JSX.Element {
   const [query, setQuery] = useState(restoredSelection?.title ?? "");
@@ -26,6 +28,7 @@ export function SearchField({
   const [matches, setMatches] = useState<AnimeSearchResult[]>([]);
   const [status, setStatus] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [searchFailed, setSearchFailed] = useState(false);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const timerRef = useRef<number | undefined>(undefined);
@@ -34,6 +37,18 @@ export function SearchField({
 
   const listId = `anime-results-${index}`;
   const optionId = (position: number) => `${listId}-option-${position}`;
+  const takenIds = new Set(pickedIds);
+  const isTaken = (position: number): boolean => {
+    const match = matches[position];
+    return match !== undefined && takenIds.has(match.id);
+  };
+  const nextAvailable = (from: number, direction: 1 | -1): number => {
+    for (let step = 1; step <= matches.length; step += 1) {
+      const candidate = (from + direction * step + matches.length * 2) % matches.length;
+      if (!isTaken(candidate)) return candidate;
+    }
+    return from;
+  };
 
   useEffect(() => {
     return () => {
@@ -81,6 +96,7 @@ export function SearchField({
     window.clearTimeout(timerRef.current);
     controllerRef.current?.abort();
     dismissMatches();
+    setSearchFailed(false);
     const trimmed = value.trim();
     if (trimmed.length < SEARCH_MIN_LENGTH) {
       setStatus(trimmed ? `Enter at least ${SEARCH_MIN_LENGTH} characters` : "");
@@ -98,12 +114,21 @@ export function SearchField({
       const results = await searchAnime(trimmed, controllerRef.current.signal);
       if (queryRef.current.trim() !== trimmed) return;
       setMatches(results);
-      setActiveIndex(results.length > 0 ? 0 : -1);
+      setActiveIndex(results.findIndex((match) => !takenIds.has(match.id)));
       setStatus(results.length ? "Choose a result" : "No anime found");
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       setStatus("Search is unavailable. Try again.");
+      setSearchFailed(true);
     }
+  }
+
+  function handleSearchRetry(): void {
+    const trimmed = queryRef.current.trim();
+    if (trimmed.length < SEARCH_MIN_LENGTH) return;
+    setSearchFailed(false);
+    setStatus("Searching...");
+    void runSearch(trimmed);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
@@ -118,18 +143,24 @@ export function SearchField({
     if (matches.length === 0) return;
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setActiveIndex((current) => (current + 1) % matches.length);
+      setActiveIndex((current) => (current < 0 ? nextAvailable(-1, 1) : nextAvailable(current, 1)));
       return;
     }
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      setActiveIndex((current) => (current <= 0 ? matches.length - 1 : current - 1));
+      setActiveIndex((current) =>
+        current < 0 ? nextAvailable(0, -1) : nextAvailable(current, -1),
+      );
       return;
     }
     if (event.key === "Enter") {
       const match = activeIndex >= 0 ? matches[activeIndex] : undefined;
       if (!match) return;
       event.preventDefault();
+      if (takenIds.has(match.id)) {
+        setStatus("Already chosen — pick a different anime.");
+        return;
+      }
       applySelection(match);
       onSelectionChange(match);
     }
@@ -162,27 +193,34 @@ export function SearchField({
           aria-controls={hasMatches ? listId : undefined}
           aria-autocomplete="list"
           aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined}
+          aria-invalid={invalid || undefined}
           value={query}
           readOnly={selected !== null}
           disabled={disabled}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
         />
-        <button
-          className="field-clear"
-          type="button"
-          aria-label={`Clear Anime ${index}`}
-          hidden={selected === null}
-          disabled={disabled}
-          onClick={handleClear}
-        >
-          Clear
-        </button>
+        {selected === null ? null : (
+          <button
+            className="field-clear"
+            type="button"
+            aria-label={`Clear Anime ${index}`}
+            disabled={disabled}
+            onClick={handleClear}
+          >
+            Clear
+          </button>
+        )}
       </div>
       <p className="field-detail">{selected ? metaLine(selected) || "Anime" : ""}</p>
       <p id={`anime-status-${index}`} className="field-status" aria-live="polite">
         {status}
       </p>
+      {searchFailed ? (
+        <button className="field-retry" type="button" onClick={handleSearchRetry}>
+          Try the search again
+        </button>
+      ) : null}
       {hasMatches ? (
         <ul id={listId} className="suggestions" role="listbox" aria-label="Anime search results">
           {matches.map((match, position) => {
@@ -193,6 +231,7 @@ export function SearchField({
                 id={optionId(position)}
                 role="option"
                 aria-selected={position === activeIndex}
+                aria-disabled={taken || undefined}
                 className={position === activeIndex ? "suggestion is-active" : "suggestion"}
               >
                 <button

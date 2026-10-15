@@ -7,6 +7,7 @@ import { recommend } from "@/recommendation/recommend";
 import { FilterBar } from "@/ui/FilterBar";
 import { SearchField } from "@/ui/SearchField";
 import { ResultRegion } from "@/ui/ResultRegion";
+import { SUBMIT_SLOW_MS, SUBMIT_TIMEOUT_MS } from "@/ui/config";
 
 const FIELD_COUNT = 3;
 
@@ -34,6 +35,10 @@ export function App(): JSX.Element {
 
   const submitRef = useRef<HTMLButtonElement | null>(null);
   const firstFieldRef = useRef<HTMLDivElement | null>(null);
+  const runRef = useRef(0);
+  const slowTimerRef = useRef<number | undefined>(undefined);
+  const deadlineRef = useRef<number | undefined>(undefined);
+  const previousUiRef = useRef<UiState>({ kind: "idle" });
 
   const selected = selections.filter(
     (selection): selection is AnimeSearchResult => selection !== null,
@@ -86,26 +91,61 @@ export function App(): JSX.Element {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
-    if (selected.length !== FIELD_COUNT) return;
-    setUi({ kind: "loading" });
-    setRestorePoint(null);
+    if (loading || selected.length !== FIELD_COUNT) return;
+    await runSubmit();
+  }
+
+  async function runSubmit(): Promise<void> {
+    if (loading) return;
+    const runId = runRef.current + 1;
+    runRef.current = runId;
+    previousUiRef.current = ui;
+    setUi({ kind: "loading", slow: false });
+    slowTimerRef.current = window.setTimeout(() => {
+      if (runRef.current !== runId) return;
+      setUi((current) => (current.kind === "loading" ? { ...current, slow: true } : current));
+    }, SUBMIT_SLOW_MS);
+    deadlineRef.current = window.setTimeout(() => {
+      if (runRef.current !== runId) return;
+      runRef.current += 1;
+      setUi({ kind: "error" });
+    }, SUBMIT_TIMEOUT_MS);
     try {
       const detailed = await getAnimeBatch(selected.map((item) => item.id));
+      if (runRef.current !== runId) return;
       if (detailed.length !== selected.length) {
-        setUi({ kind: "unavailable" });
+        const missing = selections.findIndex(
+          (item) => item !== null && !detailed.some((found) => found.id === item.id),
+        );
+        setUi({ kind: "unavailable", field: missing >= 0 ? missing + 1 : 1 });
         return;
       }
       const result = await recommend(detailed, filters);
+      if (runRef.current !== runId) return;
       if (result.kind === "recommendation") {
         setScoredSelections([...selections]);
         setScoredFilters(filters);
+        setRestorePoint(null);
         setUi({ kind: "recommendation", results: result.results, index: 0, filters });
       } else {
         setUi({ kind: "no-match" });
       }
     } catch {
+      if (runRef.current !== runId) return;
       setUi({ kind: "error" });
+    } finally {
+      if (runRef.current === runId) {
+        window.clearTimeout(slowTimerRef.current);
+        window.clearTimeout(deadlineRef.current);
+      }
     }
+  }
+
+  function handleCancel(): void {
+    runRef.current += 1;
+    window.clearTimeout(slowTimerRef.current);
+    window.clearTimeout(deadlineRef.current);
+    setUi(previousUiRef.current);
   }
 
   function handleReroll(): void {
@@ -127,6 +167,13 @@ export function App(): JSX.Element {
   useEffect(() => {
     if (canSubmit) submitRef.current?.focus();
   }, [canSubmit]);
+
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(slowTimerRef.current);
+      window.clearTimeout(deadlineRef.current);
+    };
+  }, []);
 
   const pickedIds = selections
     .filter((selection): selection is AnimeSearchResult => selection !== null)
@@ -166,6 +213,7 @@ export function App(): JSX.Element {
               pickedIds={pickedIds}
               restoreToken={restoreToken}
               restoredSelection={restorePoint?.selections[index] ?? null}
+              invalid={ui.kind === "unavailable" && ui.field === index + 1}
               onSelectionChange={(next) => handleSelectionChange(index, next)}
             />
           ))}
@@ -187,10 +235,17 @@ export function App(): JSX.Element {
         onBack={handleBack}
         onUndo={isStale && restorePoint ? handleUndo : undefined}
         onEditPicks={isStale ? handleEditPicks : undefined}
+        onCancel={loading ? handleCancel : undefined}
+        onRetry={ui.kind === "error" && canSubmit ? () => void runSubmit() : undefined}
       />
       <footer className="credit">
         Anime data and cover art from{" "}
-        <a href="https://anilist.co" target="_blank" rel="noopener noreferrer">
+        <a
+          className="anilist-link"
+          href="https://anilist.co"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           AniList
         </a>
         . Recommendations are generated on your device and are not affiliated with AniList.

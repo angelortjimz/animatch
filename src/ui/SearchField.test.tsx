@@ -266,10 +266,79 @@ describe("SearchField", () => {
     const taken = screen.getByRole("option", { name: /Already chosen/ });
     const button = taken.querySelector("button")!;
     expect(button.disabled).toBe(true);
+    expect(taken.getAttribute("aria-disabled")).toBe("true");
 
     onSelectionChange.mockClear();
     fireEvent.click(button);
     expect(onSelectionChange).not.toHaveBeenCalled();
+  });
+
+  it("refuses a taken anime from the keyboard, matching the pointer path", async () => {
+    api.search.mockResolvedValue([result(1, { title: "Nadia" }), result(2, { title: "Trigun" })]);
+    const onSelectionChange = vi.fn();
+    const { rerender } = render(
+      <SearchField
+        index={1}
+        disabled={false}
+        pickedIds={[]}
+        restoreToken={0}
+        restoredSelection={null}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+    await search(combobox(), "na");
+    expect(combobox().getAttribute("aria-activedescendant")).toBe("anime-results-1-option-0");
+
+    // The option the keyboard is sitting on becomes taken in another field.
+    rerender(
+      <SearchField
+        index={1}
+        disabled={false}
+        pickedIds={[1]}
+        restoreToken={0}
+        restoredSelection={null}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+    onSelectionChange.mockClear();
+
+    fireEvent.keyDown(combobox(), { key: "Enter" });
+    expect(onSelectionChange).not.toHaveBeenCalled();
+    expect(screen.getByText("Already chosen — pick a different anime.")).toBeDefined();
+  });
+
+  it("skips taken options while arrowing through the list", async () => {
+    api.search.mockResolvedValue([result(1, { title: "Nadia" }), result(2, { title: "Trigun" })]);
+    const { input } = renderField(vi.fn(), { pickedIds: [2] });
+    await search(input, "na");
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(input.getAttribute("aria-activedescendant")).toBe("anime-results-1-option-0");
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    expect(input.getAttribute("aria-activedescendant")).toBe("anime-results-1-option-0");
+  });
+
+  it("starts on the first option that is not already taken", async () => {
+    api.search.mockResolvedValue([result(1, { title: "Nadia" }), result(2, { title: "Trigun" })]);
+    const { input } = renderField(vi.fn(), { pickedIds: [1] });
+    await search(input, "na");
+    expect(input.getAttribute("aria-activedescendant")).toBe("anime-results-1-option-1");
+  });
+
+  it("offers a retry after a failed search and runs it", async () => {
+    api.search.mockRejectedValueOnce(new Error("network down"));
+    const { input } = renderField();
+    await search(input, "bebop");
+    expect(screen.getByText("Search is unavailable. Try again.")).toBeDefined();
+
+    api.search.mockResolvedValueOnce([result(1, { title: "Cowboy Bebop" })]);
+    fireEvent.click(screen.getByRole("button", { name: "Try the search again" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(api.search).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("Cowboy Bebop")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Try the search again" })).toBeNull();
   });
 
   it("restores a handed-back selection into the field", async () => {
