@@ -19,16 +19,51 @@ pnpm check
 
 That runs everything in sequence. Individually:
 
-| Command             | Purpose                           |
-| ------------------- | --------------------------------- |
-| `pnpm test`         | Run the test suite once           |
-| `pnpm test:watch`   | Watch mode                        |
-| `pnpm lint`         | ESLint (type-aware)               |
-| `pnpm lint:fix`     | ESLint with autofix               |
-| `pnpm format`       | Format with Prettier              |
-| `pnpm format:check` | Verify formatting without writing |
-| `pnpm typecheck`    | `tsc --noEmit`                    |
-| `pnpm build`        | Type-check, then build to `dist/` |
+| Command             | Purpose                            |
+| ------------------- | ---------------------------------- |
+| `pnpm test`         | Run the test suite once            |
+| `pnpm test:watch`   | Watch mode                         |
+| `pnpm lint`         | ESLint (type-aware)                |
+| `pnpm lint:fix`     | ESLint with autofix                |
+| `pnpm format`       | Format with Prettier               |
+| `pnpm format:check` | Verify formatting without writing  |
+| `pnpm typecheck`    | `tsc --noEmit`                     |
+| `pnpm build`        | Type-check, then build to `dist/`  |
+| `pnpm preview`      | Serve the production build locally |
+
+## Deployment
+
+AniNext is a pure static, client-only SPA. It has no backend, database, or
+server runtime; the AniList API is called directly from the browser. It deploys
+to Hostinger's Business plan through the Node.js Web App flow with GitHub
+auto-deploy.
+
+Configure the app in hPanel as follows:
+
+| Setting          | Value   | Note                                             |
+| ---------------- | ------- | ------------------------------------------------ |
+| Application type | `vite`  | Detected from `package.json`                     |
+| Node version     | `22`    | Set explicitly — `engines` is a range, not a pin |
+| Build script     | `build` | The script name, not `pnpm build`                |
+| Output directory | `dist`  | Matches the Vite default                         |
+| Entry file       | (empty) | Static site, no Node server runs                 |
+| Package manager  | `pnpm`  | Auto-detected from `pnpm-lock.yaml`              |
+| Root directory   | `/`     |                                                  |
+
+Merging to `main` triggers the Hostinger build. `public_html/` and `hbuilds/`
+are overwritten on every redeploy, so never hand-edit the deployed files —
+source changes go through GitHub.
+
+First-deploy risks to watch:
+
+- `engines.node` (`>=20.19.0`) is a range; Hostinger expects a concrete
+  version, so set Node `22` explicitly in hPanel.
+- `packageManager` (`pnpm@12.6.0`) may trip corepack if that version is
+  unavailable; if the install fails, set the package manager to `pnpm`
+  explicitly.
+- `pnpm-workspace.yaml` sets `allowBuilds: esbuild: false`; a different pnpm
+  major may not recognise the key. It builds locally today — escalate only if
+  the Hostinger build fails.
 
 ## How it works
 
