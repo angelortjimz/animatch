@@ -8,6 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A `public/favicon.svg` icon and its `<link rel="icon">`, so the browser tab
+  and bookmark show a mark instead of requesting a missing `/favicon.ico` on
+  every load. It uses the existing palette — the Press Red accent on the paper
+  surface
+- User-facing `index.html` metadata: a description written for a person rather
+  than a developer, a `theme-color`, and Open Graph and Twitter card tags.
+  `canonical`, `og:url` and the social preview image are deliberately omitted
+  until the domain and a 1200x630 asset exist
+- A `preview` script so the production build can be served and checked locally
+  before a push
+- An MIT `LICENSE`, required before the repository is distributed publicly
+- A Deployment section in `README.md` recording the static client-only
+  architecture, the hPanel build settings, and the first-deploy risks around
+  `engines`, `packageManager` and `allowBuilds`
+
 - A GitHub Actions CI workflow (`.github/workflows/ci.yml`) running
   `pnpm install --frozen-lockfile` and `pnpm check` on every pull request and
   push to `main`. It enables corepack rather than pinning a pnpm version, so
