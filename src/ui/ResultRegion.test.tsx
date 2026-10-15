@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 import type { Recommendation, RecommendationFilters } from "@/models/anime";
@@ -45,9 +45,19 @@ describe("ResultRegion", () => {
   });
 
   it("shows a spinner and progress copy while loading", () => {
-    const { container } = renderRegion({ kind: "loading" });
+    const { container } = renderRegion({ kind: "loading", slow: false });
     expect(screen.getByText("Finding your next anime...")).toBeDefined();
     expect(container.querySelector(".spinner")).not.toBeNull();
+  });
+
+  it("admits a long wait and offers an exit while loading slowly", () => {
+    const onCancel = vi.fn();
+    renderRegion({ kind: "loading", slow: true }, { onCancel });
+    expect(
+      screen.getByText("This is taking longer than usual. Keep waiting, or cancel and try again."),
+    ).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
   });
 
   it("renders the title, metadata, every reason and the based-on list", () => {
@@ -100,23 +110,49 @@ describe("ResultRegion", () => {
   });
 
   it("explains every non-recommendation outcome without naming the API", () => {
-    const outcomes: Array<[Exclude<UiState["kind"], "recommendation">, string]> = [
+    const outcomes: Array<[Exclude<UiState["kind"], "recommendation" | "idle">, string]> = [
       ["no-match", "No discovery match yet"],
       ["unavailable", "One selection is no longer available"],
       ["error", "We could not find a recommendation"],
     ];
 
     for (const [kind, heading] of outcomes) {
-      renderRegion({ kind });
+      renderRegion(
+        kind === "unavailable"
+          ? { kind, field: 2 }
+          : kind === "loading"
+            ? { kind, slow: false }
+            : { kind },
+      );
       expect(screen.getByRole("heading", { name: heading })).toBeDefined();
       expect(document.body.textContent).not.toContain("AniList");
       cleanup();
     }
   });
 
+  it("names the field to clear instead of leaving a three-way guess", () => {
+    renderRegion({ kind: "unavailable", field: 3 });
+    expect(
+      screen.getByText("Anime 3 is no longer listed. Clear that field and try again."),
+    ).toBeDefined();
+  });
+
+  it("offers a retry on the error card rather than advice", () => {
+    const onRetry = vi.fn();
+    renderRegion({ kind: "error" }, { onRetry });
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
   it("gives each outcome its own accent so the state reads before it is read", () => {
-    const accents = (["loading", "no-match", "unavailable", "error"] as const).map((kind) => {
-      const { container, unmount } = renderRegion({ kind });
+    const states: UiState[] = [
+      { kind: "loading", slow: false },
+      { kind: "no-match" },
+      { kind: "unavailable", field: 1 },
+      { kind: "error" },
+    ];
+    const accents = states.map((ui) => {
+      const { container, unmount } = renderRegion(ui);
       const accent = container.querySelector(".message-card")?.className;
       unmount();
       return accent;
@@ -130,6 +166,20 @@ describe("ResultRegion", () => {
     expect(status.textContent).toBe("Recommendation 2 of 2: Anime 8.");
     // The visual card stays out of the live region.
     expect(screen.getByRole("region", { name: "Anime 8" }).closest("[aria-live]")).toBeNull();
+  });
+
+  it("announces staleness so the change is not conveyed by greyscale alone", () => {
+    renderRegion(recommended([yurei]), { isStale: true });
+    expect(screen.getByRole("status").textContent).toBe(
+      "Your picks or filters changed. This is the previous recommendation: Yurei Deco.",
+    );
+  });
+
+  it("announces the slow wait rather than repeating the same sentence", () => {
+    renderRegion({ kind: "loading", slow: true });
+    expect(screen.getByRole("status").textContent).toBe(
+      "Still finding your next anime. This is taking longer than usual.",
+    );
   });
 
   it("moves focus to the answer so a keyboard user learns it arrived", () => {
@@ -174,7 +224,7 @@ describe("ResultRegion active filters", () => {
       isStale: true,
       onUndo: vi.fn(),
     });
-    expect(screen.getByText("Matched to your filters: OVAs, any length")).toBeDefined();
+    expect(screen.getByText("Was matched to your filters: OVAs, any length")).toBeDefined();
   });
 
   it("lets the queue counter carry a short result without extra commentary", () => {

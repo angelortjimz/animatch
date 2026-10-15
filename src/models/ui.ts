@@ -2,7 +2,7 @@ import type { Recommendation, RecommendationFilters } from "./anime";
 
 export type UiState =
   | { kind: "idle" }
-  | { kind: "loading" }
+  | { kind: "loading"; slow: boolean }
   | {
       kind: "recommendation";
       results: Recommendation[];
@@ -10,5 +10,5 @@ export type UiState =
       filters: RecommendationFilters;
     }
   | { kind: "no-match" }
-  | { kind: "unavailable" }
+  | { kind: "unavailable"; field: number }
   | { kind: "error" };

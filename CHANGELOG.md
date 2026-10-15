@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- `PRODUCT.md`, a durable record of product truth for future work: who the two
+  audiences are, the discovery-not-continuation and deterministic-explainability
+  claims, confirmed capabilities and constraints, the binding voice and
+  attribution commitments, and the WCAG 2.2 AA keyboard-complete bar. It records
+  deployment, score visibility, and MyAnimeList integration as explicitly
+  undecided rather than answering them
+
 - A filter panel offering multi-select format chips (TV, TV Short, Movie,
   OVA, ONA, Special; nothing pressed means any format) and an episode
   ceiling on a slider whose floor is pinned at one episode, with an
@@ -95,6 +102,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `opacity: 0.45`, so the control stays readable while disabled
 - `::-webkit-search-cancel-button` suppression, so the browser's own
   clear affordance no longer duplicates the field's Clear button
+- A bounded submit: a slow-wait admission ("This is taking longer than
+  usual") after `SUBMIT_SLOW_MS`, a hard deadline at `SUBMIT_TIMEOUT_MS`
+  that fails the run instead of spinning forever, and a Cancel button on
+  the loading card that restores the previous answer. Both tunables live
+  in `src/ui/config.ts`. A cancelled or timed-out run can no longer
+  overwrite the UI once its late response lands
+- A "Try again" retry on the error card that re-runs the same three
+  picks, and a "Try the search again" retry after a failed search, so
+  "try again" copy is now an action rather than advice
+- The unavailable state names the field to clear ("Anime 3 is no longer
+  listed") and marks that field `aria-invalid`, replacing a three-way
+  guess across visually identical inputs
 
 ### Changed
 
@@ -321,6 +340,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - An anime that AniList no longer lists now shows "One selection is no
   longer available" instead of the generic failure message. The previous
   code threw an error that was immediately caught and discarded
+- The keyboard could select an anime the pointer path refused. Enter on
+  the combobox read `matches[activeIndex]` without the taken check, so a
+  keyboard user could create a duplicate the disabled suggestion button
+  prevented — and `aria-activedescendant` could land on a disabled option
+  where Enter failed silently. Taken options are now skipped by the arrow
+  cycle, refused by Enter with an explanation ("Already chosen — pick a
+  different anime"), never made the initial active option, and carry
+  `aria-disabled` on the `role="option"` so the state is announced rather
+  than implied
+- `.field-clear` was a ~21px tap target in the corner of a ~200px column —
+  below the WCAG 2.2 AA 2.5.8 minimum and the only route to changing a
+  locked pick. It and the episode slider thumb now meet the 24x24 floor,
+  with the slider thumb drawn from the existing accent tokens
+- The undo for a shown result was destroyed before the request it guards.
+  `handleSubmit` cleared the restore point on submit, so a failed
+  re-submit left the prior state unrecoverable; the point is now reset
+  only when a new result actually lands
+- Staleness was conveyed by greyscale alone. The live region announced
+  the identical sentence for a fresh and a stale card; it now announces
+  "Your picks or filters changed. This is the previous recommendation: …",
+  and the filters line on a stale card reads "Was matched to your
+  filters" rather than claiming the current filters still apply
+- One loading state had two sentences: sighted users read "Finding your
+  next anime..." while screen reader users heard "Finding your
+  recommendation." The announcement now matches the visible copy, and a
+  slow wait gets its own escalating sentence
+- The no-match message leaked engine vocabulary ("direct franchise
+  continuations") into the state a first-time user is most likely to
+  hit; it now names what was actually found — direct sequels and
+  spin-offs of the user's own picks — in the user's terms
 
 ## [0.1.0]
 

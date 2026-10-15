@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type { AnimeSearchResult, RecommendationResult } from "@/models/anime";
 import { anime } from "@/recommendation/fixtures";
-import { SEARCH_DEBOUNCE_MS } from "@/ui/config";
+import { SEARCH_DEBOUNCE_MS, SUBMIT_SLOW_MS, SUBMIT_TIMEOUT_MS } from "@/ui/config";
 
 const api = vi.hoisted(() => ({
   search: vi.fn(),
@@ -185,30 +185,28 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Yurei Deco" })).toBeDefined();
   });
 
-  it("rejects a repeated selection and explains why", async () => {
+  it("refuses a repeated selection at the source, keyboard path included", async () => {
     render(<App />);
     await select(0, 1, "Cowboy Bebop");
     await select(1, 1, "Cowboy Bebop");
     await select(2, 3, "Nadia");
 
+    expect((screen.getAllByRole("combobox")[1] as HTMLInputElement).readOnly).toBe(false);
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(submitButton().disabled).toBe(true);
-    expect(screen.getByRole("alert").textContent).toBe("Please select three different anime.");
+    expect(screen.getByText(/Choose 1 more/)).toBeDefined();
   });
 
-  it("clears the duplicate warning once the clash is resolved", async () => {
+  it("locks the field once a different anime takes the refused slot", async () => {
     render(<App />);
     await select(0, 1, "Cowboy Bebop");
     await select(1, 1, "Cowboy Bebop");
+    await select(1, 2, "Trigun");
     await select(2, 3, "Nadia");
-    expect(screen.getByRole("alert").textContent).not.toBe("");
 
-    const clearButtons = screen
-      .getAllByRole("button", { name: /^Clear Anime/ })
-      .filter((button) => !(button as HTMLButtonElement).disabled);
-    await flush(() => {
-      fireEvent.click(clearButtons[1]!);
-    });
+    expect((screen.getAllByRole("combobox")[1] as HTMLInputElement).readOnly).toBe(true);
     expect(screen.queryByRole("alert")).toBeNull();
+    expect(submitButton().disabled).toBe(false);
   });
 
   it("locks the fields and shows progress while a request is in flight", async () => {
@@ -269,6 +267,12 @@ describe("App", () => {
     expect(
       screen.getByRole("heading", { name: "One selection is no longer available" }),
     ).toBeDefined();
+    expect(
+      screen.getByText("Anime 3 is no longer listed. Clear that field and try again."),
+    ).toBeDefined();
+    expect(
+      (screen.getAllByRole("combobox")[2] as HTMLInputElement).getAttribute("aria-invalid"),
+    ).toBe("true");
     expect(recommendMock).not.toHaveBeenCalled();
   });
 
@@ -284,6 +288,117 @@ describe("App", () => {
     ).toBeDefined();
     expect(screen.queryByText(/503/)).toBeNull();
     expect(screen.queryByText(/AniList responded/)).toBeNull();
+  });
+
+  it("offers a retry that re-runs the same picks after a failure", async () => {
+    api.batch
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValue([anime(1), anime(2), anime(3)]);
+    recommendMock.mockResolvedValue({
+      kind: "recommendation",
+      results: [
+        {
+          anime: anime(9, { title: "Yurei Deco" }),
+          reasons: ["Reason"],
+          basedOn: [anime(1)],
+        },
+      ],
+    } satisfies RecommendationResult);
+
+    render(<App />);
+    await chooseThreeDistinct();
+    await submit();
+    expect(
+      screen.getByRole("heading", { name: "We could not find a recommendation" }),
+    ).toBeDefined();
+
+    await flush(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    });
+    await settlePromises();
+
+    expect(screen.getByRole("heading", { name: "Yurei Deco" })).toBeDefined();
+    expect(api.batch).toHaveBeenCalledTimes(2);
+  });
+
+  it("admits a long wait instead of holding the same spinner forever", async () => {
+    api.batch.mockImplementation(() => new Promise(() => {}));
+    recommendMock.mockResolvedValue({ kind: "no-match" } satisfies RecommendationResult);
+
+    render(<App />);
+    await chooseThreeDistinct();
+    await submit();
+    expect(screen.queryByText(/taking longer than usual/)).toBeNull();
+
+    await flush(async () => {
+      await vi.advanceTimersByTimeAsync(SUBMIT_SLOW_MS);
+    });
+    expect(
+      screen.getByText("This is taking longer than usual. Keep waiting, or cancel and try again."),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDefined();
+  });
+
+  it("lets the user cancel a stuck request and get the previous answer back", async () => {
+    api.batch.mockResolvedValue([anime(1), anime(2), anime(3)]);
+    recommendMock.mockResolvedValue({
+      kind: "recommendation",
+      results: [
+        {
+          anime: anime(9, { title: "Yurei Deco" }),
+          reasons: ["Reason"],
+          basedOn: [anime(1)],
+        },
+      ],
+    } satisfies RecommendationResult);
+
+    render(<App />);
+    await chooseThreeDistinct();
+    await submit();
+    expect(screen.getByRole("heading", { name: "Yurei Deco" })).toBeDefined();
+
+    // The cancelled run resolves late; it cannot overwrite the restored answer.
+    let releaseStuck: (() => void) | undefined;
+    api.batch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseStuck = () => resolve([anime(1), anime(2), anime(3)]);
+        }),
+    );
+    await flush(() => {
+      fireEvent.click(submitButton());
+    });
+    expect(screen.getByText("Finding your next anime...")).toBeDefined();
+
+    await flush(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    });
+    expect(screen.getByRole("heading", { name: "Yurei Deco" })).toBeDefined();
+    expect(submitButton().disabled).toBe(false);
+
+    recommendMock.mockResolvedValue({ kind: "no-match" } satisfies RecommendationResult);
+    releaseStuck?.();
+    await settlePromises();
+    expect(screen.getByRole("heading", { name: "Yurei Deco" })).toBeDefined();
+    expect(recommendMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up on a request that never returns, with a retry offered", async () => {
+    api.batch.mockImplementation(() => new Promise(() => {}));
+    recommendMock.mockResolvedValue({ kind: "no-match" } satisfies RecommendationResult);
+
+    render(<App />);
+    await chooseThreeDistinct();
+    await submit();
+
+    await flush(async () => {
+      await vi.advanceTimersByTimeAsync(SUBMIT_TIMEOUT_MS);
+    });
+    expect(
+      screen.getByRole("heading", { name: "We could not find a recommendation" }),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
+    expect(submitButton().disabled).toBe(false);
   });
 
   it("credits AniList in the page footer", () => {
