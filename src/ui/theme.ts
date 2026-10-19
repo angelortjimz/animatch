@@ -1,55 +1,27 @@
-import { useEffect, useLayoutEffect, useState } from "react";
-import type { ResolvedTheme, ThemePreference } from "@/models/theme";
+import { useLayoutEffect, useState } from "react";
+import type { Theme } from "@/models/theme";
 
-export const THEME_COLORS: Record<ResolvedTheme, string> = {
+export const THEME_COLORS: Record<Theme, string> = {
   light: "#f6f8f5",
   dark: "#12181b",
 };
-
-export function resolveTheme(
-  preference: ThemePreference,
-  systemPrefersDark: boolean,
-): ResolvedTheme {
-  if (preference === "system") return systemPrefersDark ? "dark" : "light";
-  return preference;
-}
 
 function systemPrefersDark(): boolean {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
 }
 
-export function applyTheme(preference: ThemePreference, resolved: ResolvedTheme): void {
-  const root = document.documentElement;
-  if (preference === "system") {
-    delete root.dataset.theme;
-  } else {
-    root.dataset.theme = preference;
-  }
+export function applyTheme(theme: Theme): void {
+  document.documentElement.dataset.theme = theme;
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-  if (meta) meta.content = THEME_COLORS[resolved];
+  if (meta) meta.content = THEME_COLORS[theme];
 }
 
-export function useTheme(): {
-  preference: ThemePreference;
-  setPreference: (next: ThemePreference) => void;
-} {
-  const [preference, setPreference] = useState<ThemePreference>("system");
-  const [systemDark, setSystemDark] = useState<boolean>(systemPrefersDark);
-
-  useEffect(() => {
-    const query = window.matchMedia?.("(prefers-color-scheme: dark)");
-    if (!query) return;
-    const onChange = (event: MediaQueryListEvent): void => setSystemDark(event.matches);
-    setSystemDark(query.matches);
-    query.addEventListener("change", onChange);
-    return () => query.removeEventListener("change", onChange);
-  }, []);
-
-  const resolved = resolveTheme(preference, systemDark);
+export function useTheme(): { theme: Theme; setTheme: (next: Theme) => void } {
+  const [theme, setTheme] = useState<Theme>(() => (systemPrefersDark() ? "dark" : "light"));
 
   useLayoutEffect(() => {
-    applyTheme(preference, resolved);
-  }, [preference, resolved]);
+    applyTheme(theme);
+  }, [theme]);
 
-  return { preference, setPreference };
+  return { theme, setTheme };
 }

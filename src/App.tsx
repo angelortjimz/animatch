@@ -23,7 +23,7 @@ interface RestorePoint {
 }
 
 export function App(): JSX.Element {
-  const { preference, setPreference } = useTheme();
+  const { theme, setTheme } = useTheme();
   const [selections, setSelections] = useState<(AnimeSearchResult | null)[]>(() =>
     Array<AnimeSearchResult | null>(FIELD_COUNT).fill(null),
   );
@@ -202,7 +202,7 @@ export function App(): JSX.Element {
       <header className="masthead">
         <div className="masthead-top">
           <p className="eyebrow">Anime discovery engine</p>
-          <ThemeSwitch preference={preference} onChange={setPreference} />
+          <ThemeSwitch theme={theme} onChange={setTheme} />
         </div>
         <h1 className="display-title">What should you watch next?</h1>
         <p className="lead">

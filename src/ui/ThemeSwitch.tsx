@@ -1,18 +1,17 @@
 import type { JSX } from "react";
-import type { ThemePreference } from "@/models/theme";
+import type { Theme } from "@/models/theme";
 
-const OPTIONS: { value: ThemePreference; label: string }[] = [
-  { value: "system", label: "System" },
+const OPTIONS: { value: Theme; label: string }[] = [
   { value: "light", label: "Light" },
   { value: "dark", label: "Dark" },
 ];
 
 interface ThemeSwitchProps {
-  preference: ThemePreference;
-  onChange: (next: ThemePreference) => void;
+  theme: Theme;
+  onChange: (next: Theme) => void;
 }
 
-export function ThemeSwitch({ preference, onChange }: ThemeSwitchProps): JSX.Element {
+export function ThemeSwitch({ theme, onChange }: ThemeSwitchProps): JSX.Element {
   return (
     <div className="theme-switch" role="group" aria-label="Colour theme">
       {OPTIONS.map((option) => (
@@ -20,7 +19,7 @@ export function ThemeSwitch({ preference, onChange }: ThemeSwitchProps): JSX.Ele
           key={option.value}
           type="button"
           className="theme-switch__option"
-          aria-pressed={preference === option.value}
+          aria-pressed={theme === option.value}
           onClick={() => onChange(option.value)}
         >
           {option.label}

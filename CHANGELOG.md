@@ -8,12 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Dark mode. The page now honours the operating system's colour-scheme
-  preference through `light-dark()` tokens, and a Theme control in the masthead
-  — System, Light, or Dark — overrides it for the session. The override is
-  deliberately in memory only, so the choice resets to the system default on
-  reload and the app stays free of `localStorage` and cookies. The browser
-  chrome's `theme-color` follows whichever theme is resolved
+- Dark mode. The page reads the operating system's colour-scheme preference and
+  opens in that theme through `light-dark()` tokens, and a Theme control in the
+  masthead switches between Light and Dark for the session. The choice is
+  deliberately in memory only, so it resets to the system preference on reload
+  and the app stays free of `localStorage` and cookies. The browser chrome's
+  `theme-color` follows the active theme
 
 - An explicit `<meta name="referrer">` (`strict-origin-when-cross-origin`) on
   the page, so the referrer sent to AniList and on any outbound link is the
