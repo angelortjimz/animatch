@@ -40,24 +40,27 @@ auto-deploy.
 
 Configure the app in hPanel as follows:
 
-| Setting          | Value   | Note                                             |
-| ---------------- | ------- | ------------------------------------------------ |
-| Application type | `vite`  | Detected from `package.json`                     |
-| Node version     | `22`    | Set explicitly — `engines` is a range, not a pin |
-| Build script     | `build` | The script name, not `pnpm build`                |
-| Output directory | `dist`  | Matches the Vite default                         |
-| Entry file       | (empty) | Static site, no Node server runs                 |
-| Package manager  | `pnpm`  | Auto-detected from `pnpm-lock.yaml`              |
-| Root directory   | `/`     |                                                  |
+| Setting          | Value   | Note                                       |
+| ---------------- | ------- | ------------------------------------------ |
+| Application type | `vite`  | Detected from `package.json`               |
+| Node version     | `22`    | Matches the pinned `engines.node` (`22.x`) |
+| Build script     | `build` | The script name, not `pnpm build`          |
+| Output directory | `dist`  | Matches the Vite default                   |
+| Entry file       | (empty) | Static site, no Node server runs           |
+| Package manager  | `pnpm`  | Auto-detected from `pnpm-lock.yaml`        |
+| Root directory   | `/`     |                                            |
 
 Merging to `main` triggers the Hostinger build. `public_html/` and `hbuilds/`
 are overwritten on every redeploy, so never hand-edit the deployed files —
 source changes go through GitHub.
 
+The build sets `base: "./"`, so asset and favicon URLs are relative and the
+static output works from any deploy path. The `prepare` script that installs
+the local Git hooks is non-fatal, so `pnpm install` still succeeds in a build
+directory that has no `.git`.
+
 First-deploy risks to watch:
 
-- `engines.node` (`>=20.19.0`) is a range; Hostinger expects a concrete
-  version, so set Node `22` explicitly in hPanel.
 - `packageManager` (`pnpm@12.6.0`) may trip corepack if that version is
   unavailable; if the install fails, set the package manager to `pnpm`
   explicitly.

@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 
 export default defineConfig({
+  base: "./",
   plugins: [react()],
   test: {
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],

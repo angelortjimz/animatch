@@ -5,7 +5,7 @@
   "type": "module",
   "packageManager": "pnpm@12.6.0",
   "engines": {
-    "node": ">=20.19.0"
+    "node": "22.x"
   },
   "scripts": {
     "dev": "vite",
@@ -18,7 +18,7 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "prepare": "git config core.hooksPath .githooks",
+    "prepare": "git config core.hooksPath .githooks || exit 0",
     "check": "pnpm lint && pnpm format:check && pnpm test && pnpm build"
   },
   "devDependencies": {
