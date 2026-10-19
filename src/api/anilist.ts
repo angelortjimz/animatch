@@ -219,13 +219,6 @@ function isId(value: number | undefined | null): value is number {
   return Number.isInteger(value);
 }
 
-function requiredId(media: AnilistMedia): number {
-  if (!isId(media.id)) {
-    throw new AnilistError("The anime response did not include a valid identifier.");
-  }
-  return media.id;
-}
-
 function scoreOf(media: AnilistMedia): number | null {
   const score = media.averageScore;
   if (typeof score !== "number" || !Number.isFinite(score) || score <= 0) return null;
@@ -237,14 +230,6 @@ function titleOf(media: Pick<AnilistMedia, "title">): string | null {
     value?.trim(),
   );
   return title?.trim() ?? null;
-}
-
-function requiredTitle(media: AnilistMedia): string {
-  const title = titleOf(media);
-  if (!title) {
-    throw new AnilistError("The anime response did not include a title.");
-  }
-  return title;
 }
 
 function formatLabel(media: Pick<AnilistMedia, "format">): string | null {
@@ -292,10 +277,12 @@ function nativeTitleOf(media: Pick<AnilistMedia, "title">, display: string): str
   return native && native !== display ? native : null;
 }
 
-export function normalizeSearchResult(media: AnilistMedia): AnimeSearchResult {
-  const title = requiredTitle(media);
+export function normalizeSearchResult(media: AnilistMedia): AnimeSearchResult | null {
+  const id = media.id;
+  const title = titleOf(media);
+  if (!isId(id) || !title) return null;
   return {
-    id: requiredId(media),
+    id,
     title,
     nativeTitle: nativeTitleOf(media, title),
     imageUrl: imageUrl(media),
@@ -305,9 +292,11 @@ export function normalizeSearchResult(media: AnilistMedia): AnimeSearchResult {
   };
 }
 
-export function normalizeAnime(media: AnilistMedia): Anime {
+export function normalizeAnime(media: AnilistMedia): Anime | null {
+  const result = normalizeSearchResult(media);
+  if (!result) return null;
   return {
-    ...normalizeSearchResult(media),
+    ...result,
     genres: genres(media),
     themes: themes(media),
     mainStudios: mainStudios(media),
@@ -469,7 +458,7 @@ function isRetryable(status: number | undefined): boolean {
 
 interface RawResponse<T> {
   response: Response;
-  payload: AnilistResponse<T>;
+  payload: AnilistResponse<T> | null;
 }
 
 async function requestOnce<T>(
@@ -486,11 +475,18 @@ async function requestOnce<T>(
       signal: request.signal,
     });
     trackRateLimit(response);
-    const payload = (await response.json()) as AnilistResponse<T>;
+    const payload = (await response.json()) as AnilistResponse<T> | null;
     return { response, payload };
   } finally {
     request.dispose();
   }
+}
+
+function graphQlStatus(errors: Array<{ status?: number }>): number | undefined {
+  const statuses = errors.flatMap((error) =>
+    typeof error.status === "number" ? [error.status] : [],
+  );
+  return statuses.find(isRetryable) ?? statuses[0];
 }
 
 async function fetchJson<T>(
@@ -504,13 +500,11 @@ async function fetchJson<T>(
     const backoff = 500 * 2 ** attempt;
     try {
       const { response, payload } = await requestOnce<T>(query, variables, signal);
-      const graphQlError = payload.errors?.[0];
-      const status = response.ok ? (graphQlError?.status ?? 200) : response.status;
-      if (response.ok && !graphQlError) {
-        if (payload.data === null || payload.data === undefined) {
-          throw new AnilistError("AniList returned no data.");
-        }
-        return payload.data;
+      const errors = Array.isArray(payload?.errors) ? payload.errors : [];
+      const data = payload?.data;
+      const status = response.ok ? (graphQlStatus(errors) ?? 200) : response.status;
+      if (response.ok && data !== null && data !== undefined) {
+        return data;
       }
       if (!isRetryable(status)) {
         throw new AnilistError("AniList could not retrieve this anime.", status);
@@ -687,7 +681,10 @@ export async function searchAnime(
       const media = response.Page?.media;
       if (!Array.isArray(media))
         throw new AnilistError("AniList returned an invalid search response.");
-      return media.map(normalizeSearchResult);
+      return media.flatMap((entry) => {
+        const result = normalizeSearchResult(entry);
+        return result ? [result] : [];
+      });
     },
     signal,
   );
@@ -747,7 +744,12 @@ export function getAnimeBatch(ids: number[], signal?: AbortSignal): Promise<Anim
         const media = response.Page?.media;
         if (!Array.isArray(media))
           throw new AnilistError("AniList returned an invalid batch response.");
-        anime.push(...media.map(normalizeAnime));
+        anime.push(
+          ...media.flatMap((entry) => {
+            const result = normalizeAnime(entry);
+            return result ? [result] : [];
+          }),
+        );
       }
       return anime;
     },

@@ -155,29 +155,29 @@ describe("AniList normalization", () => {
   });
 
   it("keeps AniList's score, and reports an unrated title as having none", () => {
-    expect(normalizeAnime(media).score).toBe(84);
-    expect(normalizeAnime({ ...media, averageScore: null }).score).toBeNull();
-    expect(normalizeAnime({ ...media, averageScore: 0 }).score).toBeNull();
+    expect(normalizeAnime(media)?.score).toBe(84);
+    expect(normalizeAnime({ ...media, averageScore: null })?.score).toBeNull();
+    expect(normalizeAnime({ ...media, averageScore: 0 })?.score).toBeNull();
   });
 
   it("maps format casing and falls back through title languages", () => {
-    expect(normalizeSearchResult({ ...media, format: "MOVIE" }).type).toBe("Movie");
-    expect(normalizeSearchResult({ ...media, format: "TV_SHORT" }).type).toBe("TV Short");
-    expect(normalizeSearchResult({ ...media, title: { romaji: "R", native: "N" } }).title).toBe(
+    expect(normalizeSearchResult({ ...media, format: "MOVIE" })?.type).toBe("Movie");
+    expect(normalizeSearchResult({ ...media, format: "TV_SHORT" })?.type).toBe("TV Short");
+    expect(normalizeSearchResult({ ...media, title: { romaji: "R", native: "N" } })?.title).toBe(
       "R",
     );
-    expect(normalizeSearchResult({ ...media, title: { native: "N" } }).title).toBe("N");
+    expect(normalizeSearchResult({ ...media, title: { native: "N" } })?.title).toBe("N");
   });
 
   it("keeps the native title alongside the display title, and drops a duplicate", () => {
-    expect(normalizeSearchResult(media).nativeTitle).toBe("カウボーイビバップ");
+    expect(normalizeSearchResult(media)?.nativeTitle).toBe("カウボーイビバップ");
     expect(
       normalizeSearchResult({
         ...media,
         title: { english: "Same", romaji: "Same", native: "Same" },
-      }).nativeTitle,
+      })?.nativeTitle,
     ).toBeNull();
-    expect(normalizeSearchResult({ ...media, title: { romaji: "R" } }).nativeTitle).toBeNull();
+    expect(normalizeSearchResult({ ...media, title: { romaji: "R" } })?.nativeTitle).toBeNull();
   });
 
   it("drops blank and unnamed studio edges", () => {
@@ -185,7 +185,7 @@ describe("AniList normalization", () => {
       ...media,
       studios: { edges: [{ node: { name: "Sunrise" } }, { node: { name: "   " } }, {}, null] },
     });
-    expect(candidate.mainStudios).toEqual(["Sunrise"]);
+    expect(candidate?.mainStudios).toEqual(["Sunrise"]);
   });
 
   it("normalizes every relation edge, keeping manga links for the policy layer", () => {
@@ -207,7 +207,7 @@ describe("AniList normalization", () => {
         ],
       },
     });
-    expect(candidate.relations).toEqual([
+    expect(candidate?.relations).toEqual([
       { id: 20, title: "Naruto", mediaType: "anime", format: "TV", relationType: "PREQUEL" },
       {
         id: 30011,
@@ -220,13 +220,15 @@ describe("AniList normalization", () => {
   });
 
   it("reports no relations when AniList sends none", () => {
-    expect(normalizeAnime(media).relations).toEqual([]);
-    expect(normalizeAnime({ ...media, relations: { edges: [] } }).relations).toEqual([]);
+    expect(normalizeAnime(media)?.relations).toEqual([]);
+    expect(normalizeAnime({ ...media, relations: { edges: [] } })?.relations).toEqual([]);
   });
 
-  it("throws a typed error when required fields are missing", () => {
-    expect(() => normalizeSearchResult({ ...media, id: undefined })).toThrow(AnilistError);
-    expect(() => normalizeSearchResult({ ...media, title: {} })).toThrow(AnilistError);
+  it("skips rows missing required fields instead of failing the whole page", () => {
+    expect(normalizeSearchResult({ ...media, id: undefined })).toBeNull();
+    expect(normalizeSearchResult({ ...media, title: {} })).toBeNull();
+    expect(normalizeAnime({ ...media, id: undefined })).toBeNull();
+    expect(normalizeAnime({ ...media, title: {} })).toBeNull();
   });
 });
 
@@ -422,6 +424,66 @@ describe("AniList requests", () => {
     await getAnimeBatch([2, 1]);
     await getAnimeBatch([1, 2]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the good search rows when one row is malformed", async () => {
+    const fetchMock = stubFetch(
+      dataResponse({ Page: { media: [media, { ...media, id: undefined, title: {} }] } }),
+    );
+
+    const rows = await searchAnime("bebop");
+
+    expect(rows.map((row) => row.id)).toEqual([1]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the good batch rows when one row is malformed", async () => {
+    const fetchMock = stubFetch(
+      dataResponse({ Page: { media: [media, { ...media, id: 2, title: {} }] } }),
+    );
+
+    const anime = await getAnimeBatch([1, 2]);
+
+    expect(anime.map((item) => item.id)).toEqual([1]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts data delivered alongside GraphQL errors as a partial success", async () => {
+    const fetchMock = stubFetch(
+      jsonResponse({
+        data: { Page: { media: [media] } },
+        errors: [{ message: "Partial failure.", status: 500 }],
+      }),
+    );
+
+    const rows = await searchAnime("bebop");
+
+    expect(rows.map((row) => row.id)).toEqual([1]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a null response body without retrying", async () => {
+    const fetchMock = stubFetch(jsonResponse(null));
+
+    await expect(searchAnime("bebop")).rejects.toThrow(/could not retrieve this anime/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("finds a retryable status in any GraphQL error, not only the first", async () => {
+    vi.useFakeTimers();
+    const fetchMock = stubFetch(
+      jsonResponse({
+        data: null,
+        errors: [{ message: "No status." }, { message: "Busy.", status: 503 }],
+      }),
+      dataResponse({ Page: { media: [media] } }),
+    );
+
+    const pending = searchAnime("bebop");
+    await vi.advanceTimersByTimeAsync(500);
+
+    await expect(pending).resolves.toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("lets AniList narrow the format instead of fetching a page we would thin out", async () => {

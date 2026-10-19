@@ -482,6 +482,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- A single malformed AniList row no longer discards the rest of a search or
+  batch response. Normalization now skips rows without a valid id or title, so
+  one bad entry cannot cost the other four search results or the other 49
+  hydrated titles after the requests were already spent. A response carrying
+  both `data` and `errors` is treated as partial success rather than total
+  failure, all GraphQL errors are inspected for a retryable status instead of
+  only the first, and a literal `null` body produces the existing friendly
+  error instead of crashing
+
 - Active filter chips and selected text no longer take their foreground from
   the surface palette. Both used a surface token (`stock-raised`, then
   `ink-on-strong`) as the text colour on the Press Red fill, which produced
