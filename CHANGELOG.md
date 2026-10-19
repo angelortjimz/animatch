@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- An explicit `<meta name="referrer">` (`strict-origin-when-cross-origin`) on
+  the page, so the referrer sent to AniList and on any outbound link is the
+  same in every browser rather than left to each browser's default
+
 - A native Git pre-push hook (`.githooks/pre-push`) that runs `pnpm check`, so
   lint, format, tests and build are verified before a push rather than only when
   someone remembers. It needs no new dependency: a `prepare` script sets
@@ -196,6 +200,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   recommendation is being scored
 
 ### Changed
+
+- `engines.node` is pinned to `22.x` instead of the open-ended `>=20.19.0`
+  range, so the Hostinger build receives the concrete version it expects.
+  CI already ran Node 22, so the workflow is unchanged
+- The production build sets a relative `base` (`"./"`), so asset, script and
+  favicon URLs resolve from any deploy path instead of assuming the site is
+  served from the domain root
+- The `prepare` script is non-fatal. It still points Git at `.githooks`, but a
+  checkout without a `.git` directory — the Hostinger build — no longer fails
+  `pnpm install` when the `git config` call exits non-zero
 
 - The app is renamed from AniNext to AniMatch across the UI, user-facing
   metadata, documentation, and the package name (`animatch`). No behaviour
@@ -460,6 +474,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `DETAIL_CONCURRENCY` (no longer needed with batched fetching)
 
 ### Fixed
+
+- Reason and genre ordering no longer depends on the browser locale. The
+  recommendation reasons and the discovery genre list sorted user-visible
+  strings with `localeCompare`, whose ICU collation can order the same AniList
+  data differently from one browser to the next. Both now compare by UTF-16
+  code unit, a fixed ordering, so identical data renders the same text
+  everywhere — the determinism the engine already guaranteed for its ranking
+  now holds for its copy as well
 
 - The AniList response cache grew without bound for the life of the tab. Every
   search term and every distinct batch id list stayed resident forever, and a

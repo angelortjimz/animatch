@@ -137,4 +137,25 @@ describe("generateReasons", () => {
     const backward = generateReasons(candidate, reversed(selected));
     expect(forward).toEqual(backward);
   });
+
+  it("orders linked titles by code unit rather than by locale collation", () => {
+    const picks = [
+      anime(1, { title: "Zebra" }),
+      anime(2, { title: "apple" }),
+      anime(3, { title: "Mango" }),
+    ];
+    const [seed] = buildCandidateSeeds(
+      picks,
+      [[relation(1, 10, "SIDE_STORY")], [relation(2, 10, "SIDE_STORY")], []],
+      [[], [], []],
+      NO_FILTERS,
+    );
+    if (!seed) throw new Error("expected a candidate seed");
+    const candidate = scoreCandidate(seed, anime(10, { genres: [], themes: [] }), picks);
+
+    expect(generateReasons(candidate, picks)[0]).toBe(
+      "Sits alongside Zebra and apple, a neighbouring story rather than the next episode.",
+    );
+    expect(generateReasons(candidate, reversed(picks))).toEqual(generateReasons(candidate, picks));
+  });
 });

@@ -2,7 +2,8 @@
 
 **Host:** Hostinger Business plan (Node.js Web App flow, GitHub auto-deploy)
 **Architecture:** Option A — pure static client-side SPA, no backend
-**Status:** In progress — branches 1–8 landed; Phase 6 hardening sequenced in §13.
+**Status:** In progress — branches 1–8, 10–11 landed; branch 9 pending and
+Phase 6 hardening sequenced in §13.
 Hostinger panel access is unavailable, so every branch except the deploy itself
 proceeds now and deployment is deferred.
 **Date:** 2026-10-15
@@ -135,7 +136,7 @@ fallback rule is required.
 
 | ID  | Risk                                                                                                       | Mitigation                                                       |
 | --- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| R1  | `engines: ">=20.19.0"` is a range, not a pin; Hostinger expects a concrete version                         | Set Node `22` explicitly in hPanel                               |
+| R1  | `engines: ">=20.19.0"` is a range, not a pin; Hostinger expects a concrete version                         | Resolved — `engines` pinned to `22.x`                            |
 | R2  | `packageManager: "pnpm@12.6.0"` may trip corepack if unavailable                                           | If install fails, set package manager to `pnpm` explicitly       |
 | R3  | `pnpm-workspace.yaml` sets `allowBuilds: esbuild: false`; a different pnpm major may not recognise the key | Builds locally today; escalate only if the Hostinger build fails |
 
@@ -636,8 +637,8 @@ Branches 12–14 are optional and may stay deferred.
 | 7   | `api/cache-bounds`           | TTL, entry cap + LRU, ABA-safe deletes, clear aborts in flight | Critical | **Done** |
 | 8   | `api/rate-limit-recovery`    | Gate every query kind; recover after `X-RateLimit-Reset`       | High     | **Done** |
 | 9   | `api/graceful-degradation`   | Skip bad rows; partial success; multi-error and `null` body    | High     | Pending  |
-| 10  | `fix/deterministic-ordering` | Remove locale-dependent `localeCompare`                        | Medium   | Pending  |
-| 11  | `chore/deploy-hardening`     | Non-fatal `prepare`, pin `engines`, `base`, package name       | Medium   | Pending  |
+| 10  | `fix/deterministic-ordering` | Remove locale-dependent `localeCompare`                        | Medium   | **Done** |
+| 11  | `chore/deploy-hardening`     | Non-fatal `prepare`, pin `engines`, `base`, package name       | Medium   | **Done** |
 | 12  | `ci/dependency-guard`        | Coverage threshold, `pnpm audit`, Dependabot, axe              | Low      | Deferred |
 | 13  | `site/metadata`              | `canonical`, `og:image`, `twitter:image`                       | Low      | Blocked  |
 | 14  | `ui/dark-mode`               | `prefers-color-scheme` and dynamic `theme-color`               | Low      | Deferred |
