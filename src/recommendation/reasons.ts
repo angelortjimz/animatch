@@ -1,8 +1,9 @@
 import type { Anime, Candidate } from "@/models/anime";
 import { COMMUNITY_RELATION_TYPE, MAX_REASONS, MIN_SHARED_SELECTIONS } from "./config";
+import { compareText } from "./ordering";
 
 function listTitles(titles: string[]): string {
-  const sorted = [...titles].sort((a, b) => a.localeCompare(b));
+  const sorted = [...titles].sort(compareText);
   if (sorted.length <= 1) return sorted[0] ?? "";
   const last = sorted[sorted.length - 1];
   return `${sorted.slice(0, -1).join(", ")} and ${last}`;

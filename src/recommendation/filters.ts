@@ -6,6 +6,7 @@ import {
   type RecommendationFilters,
 } from "@/models/anime";
 import { DISCOVERY_GENRE_LIMIT, EPISODE_SLIDER_MAX, EPISODE_SLIDER_MIN } from "./config";
+import { compareText } from "./ordering";
 
 export function clampMaxEpisodes(value: number): number {
   if (!Number.isFinite(value)) return EPISODE_SLIDER_MIN;
@@ -52,7 +53,7 @@ export function sharedGenres(selected: Anime[]): string[] {
     }
   }
   return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .sort((a, b) => b[1] - a[1] || compareText(a[0], b[0]))
     .slice(0, DISCOVERY_GENRE_LIMIT)
     .map(([genre]) => genre);
 }

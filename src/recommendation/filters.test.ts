@@ -148,6 +148,26 @@ describe("sharedGenres", () => {
   it("returns nothing when the picks share no genres", () => {
     expect(sharedGenres([anime(1, { genres: [] }), anime(2, { genres: [] })])).toEqual([]);
   });
+
+  it("breaks ties by code unit rather than by locale collation", () => {
+    const selected = [
+      anime(1, { genres: ["Zebra", "apple"] }),
+      anime(2, { genres: ["Zebra", "apple"] }),
+    ];
+    expect(sharedGenres(selected)).toEqual(["Zebra", "apple"]);
+  });
+
+  it("is independent of the order the picks arrive in", () => {
+    const forward = sharedGenres([
+      anime(1, { genres: ["Zebra", "apple"] }),
+      anime(2, { genres: ["Zebra", "apple"] }),
+    ]);
+    const backward = sharedGenres([
+      anime(2, { genres: ["Zebra", "apple"] }),
+      anime(1, { genres: ["Zebra", "apple"] }),
+    ]);
+    expect(backward).toEqual(forward);
+  });
 });
 
 describe("filter labels", () => {
