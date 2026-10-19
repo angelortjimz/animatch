@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Floating GitHub and LinkedIn icon links in the bottom-right corner, using the
+  page's own colour tokens so they match the current theme. Each link opens in a
+  new tab with `rel="noopener noreferrer"` and carries an accessible label
+
 - Dark mode. The page reads the operating system's colour-scheme preference and
   opens in that theme through `light-dark()` tokens, and a Theme control in the
   masthead switches between Light and Dark for the session. The choice is

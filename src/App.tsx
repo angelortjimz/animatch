@@ -7,6 +7,7 @@ import { recommend } from "@/recommendation/recommend";
 import { FilterBar } from "@/ui/FilterBar";
 import { SearchField } from "@/ui/SearchField";
 import { ResultRegion } from "@/ui/ResultRegion";
+import { SocialLinks } from "@/ui/SocialLinks";
 import { ThemeSwitch } from "@/ui/ThemeSwitch";
 import { useTheme } from "@/ui/theme";
 import { SUBMIT_SLOW_MS, SUBMIT_TIMEOUT_MS } from "@/ui/config";
@@ -271,6 +272,10 @@ export function App(): JSX.Element {
         </a>
         . Recommendations are generated on your device and are not affiliated with AniList.
       </footer>
+      <SocialLinks
+        githubUrl="https://github.com/angelortjimz/animatch"
+        linkedinUrl="https://www.linkedin.com/in/%C3%A1ngel-ortega-jim%C3%A9nez-320221279/"
+      />
     </main>
   );
 }
