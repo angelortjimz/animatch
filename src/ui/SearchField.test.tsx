@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 import type { AnimeSearchResult } from "@/models/anime";
+import { RateLimitError } from "@/api/anilist";
 import { SearchField } from "./SearchField";
 import { SEARCH_DEBOUNCE_MS } from "./config";
 
@@ -339,6 +340,33 @@ describe("SearchField", () => {
     expect(api.search).toHaveBeenCalledTimes(2);
     expect(screen.getByText("Cowboy Bebop")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Try the search again" })).toBeNull();
+  });
+
+  it("locks retry until the rate limit resets and then allows it", async () => {
+    const retryAt = Date.now() + 30_000;
+    api.search.mockRejectedValueOnce(new RateLimitError(retryAt));
+    const { input } = renderField();
+    await search(input, "bebop");
+
+    expect(screen.getByText(/temporarily unavailable/i)).toBeDefined();
+    const locked = screen.getByRole<HTMLButtonElement>("button", { name: "Try the search again" });
+    expect(locked.disabled).toBe(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(30_000);
+    });
+    const unlocked = screen.getByRole<HTMLButtonElement>("button", {
+      name: "Try the search again",
+    });
+    expect(unlocked.disabled).toBe(false);
+
+    api.search.mockResolvedValueOnce([result(1, { title: "Cowboy Bebop" })]);
+    fireEvent.click(unlocked);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(api.search).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("Cowboy Bebop")).toBeDefined();
   });
 
   it("restores a handed-back selection into the field", async () => {

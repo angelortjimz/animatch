@@ -612,6 +612,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   continuations") into the state a first-time user is most likely to
   hit; it now names what was actually found — direct sequels and
   spin-offs of the user's own picks — in the user's terms
+- A low AniList budget could lock search for the rest of the tab. The gate
+  tracked only `X-RateLimit-Remaining`, so once it fell to three the "Try the
+  search again" button re-entered the same guard and failed forever, and an
+  empty header counted as zero. The client now tracks `X-RateLimit-Reset`
+  alongside remaining and releases the gate when it passes, with a one-minute
+  fallback when the header is missing, unparseable, or in the past. Empty,
+  non-finite, and negative values are ignored or clamped, and a far-future
+  reset is clamped to the same window
+- Connections, batch and discovery now share the low-budget guard, so a
+  throttled server is not retried with more requests while search is already
+  parked. The guard sits inside each cache loader, so a warm entry is still
+  served without spending budget
+- The search field now distinguishes a rate-limited search from a failed one:
+  it shows a temporary-unavailable message and keeps "Try the search again"
+  disabled until the reset passes, instead of offering an instant retry that
+  re-enters the same guard
 
 ## [0.1.0]
 

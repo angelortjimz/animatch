@@ -10,7 +10,14 @@ import {
   type DiscoveryCandidate,
   type RelatedAnime,
 } from "@/models/anime";
-import { CACHE_MAX_ENTRIES, CACHE_TTL_MS, REQUEST_TIMEOUT_MS, RETRY_AFTER_MAX_MS } from "./config";
+import {
+  CACHE_MAX_ENTRIES,
+  CACHE_TTL_MS,
+  RATE_LIMIT_FLOOR,
+  RATE_LIMIT_WINDOW_MS,
+  REQUEST_TIMEOUT_MS,
+  RETRY_AFTER_MAX_MS,
+} from "./config";
 
 const BASE_URL = "https://graphql.anilist.co";
 const SEARCH_LIMIT = 5;
@@ -18,7 +25,6 @@ export const SEARCH_MIN_LENGTH = 3;
 const BATCH_LIMIT = 50;
 const RECOMMENDATION_LIMIT = 25;
 const MAX_RETRIES = 2;
-const SEARCH_RATE_LIMIT_FLOOR = 3;
 
 export class AnilistError extends Error {
   constructor(
@@ -27,6 +33,13 @@ export class AnilistError extends Error {
   ) {
     super(message);
     this.name = "AnilistError";
+  }
+}
+
+export class RateLimitError extends AnilistError {
+  constructor(public readonly retryAt: number) {
+    super("AniList is temporarily unavailable. Please try again shortly.");
+    this.name = "RateLimitError";
   }
 }
 
@@ -517,17 +530,54 @@ async function fetchJson<T>(
   throw new AnilistError("We could not connect to AniList. Please try again.");
 }
 
-let rateLimitRemaining: number | null = null;
-
-function trackRateLimit(response: Response): void {
-  const header = response.headers.get("X-RateLimit-Remaining");
-  if (header === null) return;
-  const remaining = Number(header);
-  if (Number.isFinite(remaining)) rateLimitRemaining = remaining;
+interface RateLimitState {
+  remaining: number | null;
+  resetAt: number | null;
 }
 
-function isSearchRateLimited(): boolean {
-  return rateLimitRemaining !== null && rateLimitRemaining <= SEARCH_RATE_LIMIT_FLOOR;
+const rateLimit: RateLimitState = { remaining: null, resetAt: null };
+
+function headerNumber(headers: Headers, name: string): number | null {
+  const value = headers.get(name);
+  if (value === null) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function trackRateLimit(response: Response): void {
+  const now = Date.now();
+  const remaining = headerNumber(response.headers, "X-RateLimit-Remaining");
+  if (remaining !== null) rateLimit.remaining = Math.max(0, remaining);
+  if (rateLimit.remaining === null) return;
+  if (rateLimit.remaining > RATE_LIMIT_FLOOR) {
+    rateLimit.resetAt = null;
+    return;
+  }
+  const reset = headerNumber(response.headers, "X-RateLimit-Reset");
+  if (reset !== null && reset > 0) {
+    rateLimit.resetAt = Math.min(Math.max(reset * 1000, now), now + RATE_LIMIT_WINDOW_MS);
+  } else if (rateLimit.resetAt === null || rateLimit.resetAt <= now) {
+    rateLimit.resetAt = now + RATE_LIMIT_WINDOW_MS;
+  }
+}
+
+function rateLimitRetryAt(): number | null {
+  if (rateLimit.remaining === null || rateLimit.remaining > RATE_LIMIT_FLOOR) return null;
+  const now = Date.now();
+  if (rateLimit.resetAt === null) rateLimit.resetAt = now + RATE_LIMIT_WINDOW_MS;
+  if (now >= rateLimit.resetAt) {
+    rateLimit.remaining = null;
+    rateLimit.resetAt = null;
+    return null;
+  }
+  return rateLimit.resetAt;
+}
+
+function assertRateLimitBudget(): void {
+  const retryAt = rateLimitRetryAt();
+  if (retryAt !== null) throw new RateLimitError(retryAt);
 }
 
 interface CacheEntry<T> {
@@ -632,9 +682,7 @@ export async function searchAnime(
   return cached(
     key,
     async (requestSignal) => {
-      if (isSearchRateLimited()) {
-        throw new AnilistError("Search is unavailable. Try again.");
-      }
+      assertRateLimitBudget();
       const response = await fetchJson<AnilistPageResponse>(SEARCH_QUERY, variables, requestSignal);
       const media = response.Page?.media;
       if (!Array.isArray(media))
@@ -649,6 +697,7 @@ export function getAnimeConnections(id: number, signal?: AbortSignal): Promise<A
   return cached(
     `connections:${id}`,
     async (requestSignal) => {
+      assertRateLimitBudget();
       const response = await fetchJson<AnilistMediaResponse>(
         CONNECTIONS_QUERY,
         { id, perPage: RECOMMENDATION_LIMIT },
@@ -684,6 +733,7 @@ export function getAnimeBatch(ids: number[], signal?: AbortSignal): Promise<Anim
     async (requestSignal) => {
       const anime: Anime[] = [];
       for (let offset = 0; offset < uniqueIds.length; offset += BATCH_LIMIT) {
+        assertRateLimitBudget();
         const chunk = uniqueIds.slice(offset, offset + BATCH_LIMIT);
         const response = await fetchJson<AnilistPageResponse>(
           BATCH_QUERY,
@@ -726,6 +776,7 @@ export async function getDiscoveryCandidates(
   };
 
   if (request.formats.length > 0) variables.formatIn = request.formats;
+  assertRateLimitBudget();
   const response = await fetchJson<AnilistPageResponse>(DISCOVERY_QUERY, variables, signal);
   const media = response.Page?.media;
   if (!Array.isArray(media))
@@ -741,5 +792,6 @@ export function clearAnilistCache(): void {
     if (!entry.settled) entry.controller.abort();
   }
   cache.clear();
-  rateLimitRemaining = null;
+  rateLimit.remaining = null;
+  rateLimit.resetAt = null;
 }

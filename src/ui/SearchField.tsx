@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type JSX, type KeyboardEvent } from "react";
-import { SEARCH_MIN_LENGTH, isAbortError, searchAnime } from "@/api/anilist";
+import { RateLimitError, SEARCH_MIN_LENGTH, isAbortError, searchAnime } from "@/api/anilist";
 import type { AnimeSearchResult } from "@/models/anime";
 import { SEARCH_DEBOUNCE_MS } from "./config";
 import { metaLine } from "./format";
@@ -29,6 +29,7 @@ export function SearchField({
   const [status, setStatus] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
   const [searchFailed, setSearchFailed] = useState(false);
+  const [retryAt, setRetryAt] = useState<number | null>(null);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const timerRef = useRef<number | undefined>(undefined);
@@ -57,9 +58,22 @@ export function SearchField({
     };
   }, []);
 
+  useEffect(() => {
+    if (retryAt === null) return;
+    const timer = window.setTimeout(
+      () => {
+        setRetryAt(null);
+        setStatus("Search is available again. Try the search again.");
+      },
+      Math.max(0, retryAt - Date.now()),
+    );
+    return () => window.clearTimeout(timer);
+  }, [retryAt]);
+
   function applySelection(match: AnimeSearchResult | null): void {
     window.clearTimeout(timerRef.current);
     controllerRef.current?.abort();
+    setRetryAt(null);
     setSelected(match);
     setQuery(match?.title ?? "");
     queryRef.current = match?.title ?? "";
@@ -74,6 +88,7 @@ export function SearchField({
     appliedRestore.current = restoreToken;
     window.clearTimeout(timerRef.current);
     controllerRef.current?.abort();
+    setRetryAt(null);
     setSelected(restoredSelection);
     setQuery(restoredSelection?.title ?? "");
     queryRef.current = restoredSelection?.title ?? "";
@@ -97,6 +112,7 @@ export function SearchField({
     controllerRef.current?.abort();
     dismissMatches();
     setSearchFailed(false);
+    setRetryAt(null);
     const trimmed = value.trim();
     if (trimmed.length < SEARCH_MIN_LENGTH) {
       setStatus(trimmed ? `Enter at least ${SEARCH_MIN_LENGTH} characters` : "");
@@ -116,9 +132,16 @@ export function SearchField({
       setMatches(results);
       setActiveIndex(results.findIndex((match) => !takenIds.has(match.id)));
       setStatus(results.length ? "Choose a result" : "No anime found");
+      setSearchFailed(false);
+      setRetryAt(null);
     } catch (error) {
       if (isAbortError(error)) return;
-      setStatus("Search is unavailable. Try again.");
+      if (error instanceof RateLimitError) {
+        setStatus("Search is temporarily unavailable. Please try again in a moment.");
+        setRetryAt(error.retryAt);
+      } else {
+        setStatus("Search is unavailable. Try again.");
+      }
       setSearchFailed(true);
     }
   }
@@ -126,6 +149,7 @@ export function SearchField({
   function handleSearchRetry(): void {
     const trimmed = queryRef.current.trim();
     if (trimmed.length < SEARCH_MIN_LENGTH) return;
+    if (retryAt !== null) return;
     setSearchFailed(false);
     setStatus("Searching...");
     void runSearch(trimmed);
@@ -217,7 +241,12 @@ export function SearchField({
         {status}
       </p>
       {searchFailed ? (
-        <button className="field-retry" type="button" onClick={handleSearchRetry}>
+        <button
+          className="field-retry"
+          type="button"
+          disabled={retryAt !== null}
+          onClick={handleSearchRetry}
+        >
           Try the search again
         </button>
       ) : null}
