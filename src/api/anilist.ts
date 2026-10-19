@@ -10,7 +10,7 @@ import {
   type DiscoveryCandidate,
   type RelatedAnime,
 } from "@/models/anime";
-import { REQUEST_TIMEOUT_MS, RETRY_AFTER_MAX_MS } from "./config";
+import { CACHE_MAX_ENTRIES, CACHE_TTL_MS, REQUEST_TIMEOUT_MS, RETRY_AFTER_MAX_MS } from "./config";
 
 const BASE_URL = "https://graphql.anilist.co";
 const SEARCH_LIMIT = 5;
@@ -535,27 +535,60 @@ interface CacheEntry<T> {
   controller: AbortController;
   subscribers: number;
   settled: boolean;
+  createdAt: number;
 }
 
 const cache = new Map<string, CacheEntry<unknown>>();
 
+function dropEntry(key: string, entry: CacheEntry<unknown>): void {
+  if (cache.get(key) === entry) cache.delete(key);
+}
+
+function isExpired(entry: CacheEntry<unknown>): boolean {
+  return Date.now() - entry.createdAt >= CACHE_TTL_MS;
+}
+
+function touchEntry(key: string, entry: CacheEntry<unknown>): void {
+  cache.delete(key);
+  cache.set(key, entry);
+}
+
+function evictOverflow(): void {
+  if (cache.size <= CACHE_MAX_ENTRIES) return;
+  // Oldest first, so the least recently used entry goes. Live entries are never
+  // evicted: somebody is waiting on them, or they were just created for a
+  // caller that has not subscribed yet.
+  for (const [key, entry] of cache) {
+    if (entry.subscribers > 0 || !entry.settled) continue;
+    cache.delete(key);
+    if (cache.size <= CACHE_MAX_ENTRIES) return;
+  }
+}
+
 function startEntry<T>(key: string, load: (signal: AbortSignal) => Promise<T>): CacheEntry<T> {
   const controller = new AbortController();
   const promise = load(controller.signal);
-  const entry: CacheEntry<T> = { promise, controller, subscribers: 0, settled: false };
+  const entry: CacheEntry<T> = {
+    promise,
+    controller,
+    subscribers: 0,
+    settled: false,
+    createdAt: Date.now(),
+  };
   promise.then(
     () => {
       entry.settled = true;
     },
     () => {
       entry.settled = true;
-      cache.delete(key);
+      dropEntry(key, entry);
     },
   );
   // Every caller may have aborted by the time a shared failure lands; keep the
   // rejection handled so it never surfaces as an unhandled rejection.
   promise.catch(() => {});
   cache.set(key, entry);
+  evictOverflow();
   return entry;
 }
 
@@ -565,7 +598,16 @@ function cached<T>(
   signal?: AbortSignal,
 ): Promise<T> {
   if (signal?.aborted) return Promise.reject(abortError());
-  const entry = (cache.get(key) as CacheEntry<T> | undefined) ?? startEntry(key, load);
+  let entry = cache.get(key) as CacheEntry<T> | undefined;
+  if (entry && isExpired(entry)) {
+    dropEntry(key, entry);
+    entry = undefined;
+  }
+  if (entry) {
+    touchEntry(key, entry);
+  } else {
+    entry = startEntry(key, load);
+  }
   entry.subscribers += 1;
   let released = false;
   const release = (): void => {
@@ -576,7 +618,7 @@ function cached<T>(
     // caller has gone, stop the fetch rather than let it retry unseen.
     if (entry.subscribers <= 0 && !entry.settled) {
       entry.controller.abort();
-      cache.delete(key);
+      dropEntry(key, entry);
     }
   };
   return withAbort(entry.promise, signal).finally(release);
@@ -702,6 +744,9 @@ export async function getDiscoveryCandidates(
 }
 
 export function clearAnilistCache(): void {
+  for (const entry of cache.values()) {
+    if (!entry.settled) entry.controller.abort();
+  }
   cache.clear();
   rateLimitRemaining = null;
 }

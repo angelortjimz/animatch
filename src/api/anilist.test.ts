@@ -11,7 +11,7 @@ import {
   normalizeSearchResult,
   searchAnime,
 } from "./anilist";
-import { REQUEST_TIMEOUT_MS } from "./config";
+import { CACHE_MAX_ENTRIES, CACHE_TTL_MS, REQUEST_TIMEOUT_MS } from "./config";
 
 beforeEach(() => {
   clearAnilistCache();
@@ -819,6 +819,96 @@ describe("AniList cancellation", () => {
       expect(isAbortError(await pending), name).toBe(true);
       expect(fetchMock, name).toHaveBeenCalledTimes(1);
     }
+  });
+});
+
+describe("AniList cache bounds", () => {
+  function searchResponse(): unknown {
+    return dataResponse({ Page: { media: [media] } });
+  }
+
+  it("evicts the least recently used entry once the cap is reached", async () => {
+    const fetchMock = vi.fn(async () => searchResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    for (let index = 0; index < CACHE_MAX_ENTRIES; index += 1) {
+      await searchAnime(`term ${index}`);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(CACHE_MAX_ENTRIES);
+
+    // Refresh the oldest entry, then add one more: the LRU victim is the second.
+    await searchAnime("term 0");
+    expect(fetchMock).toHaveBeenCalledTimes(CACHE_MAX_ENTRIES);
+
+    await searchAnime("term overflow");
+    expect(fetchMock).toHaveBeenCalledTimes(CACHE_MAX_ENTRIES + 1);
+
+    await searchAnime("term 0");
+    expect(fetchMock).toHaveBeenCalledTimes(CACHE_MAX_ENTRIES + 1);
+
+    await searchAnime("term 1");
+    expect(fetchMock).toHaveBeenCalledTimes(CACHE_MAX_ENTRIES + 2);
+  });
+
+  it("refetches a cached search once its time to live has elapsed", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => searchResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    await searchAnime("bebop");
+    await searchAnime("bebop");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(CACHE_TTL_MS - 1);
+    await searchAnime("bebop");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await searchAnime("bebop");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not let a superseded entry delete the replacement that reused its key", async () => {
+    const resolvers: Array<(value: unknown) => void> = [];
+    const fetchMock = vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise((resolve, reject) => {
+          resolvers.push(resolve);
+          init.signal?.addEventListener("abort", () => reject(abortError()), { once: true });
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const first = searchAnime("bebop").catch((error: unknown) => error);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+
+    clearAnilistCache();
+    const second = searchAnime("bebop");
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    // The superseded entry settles only after the replacement has taken its key.
+    expect(isAbortError(await first)).toBe(true);
+
+    resolvers[1]?.(searchResponse());
+    await expect(second).resolves.toHaveLength(1);
+
+    await searchAnime("bebop");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("aborts in-flight work when the cache is cleared", async () => {
+    vi.useFakeTimers();
+    const fetchMock = hangingFetch();
+    const pending = searchAnime("bebop").catch((error: unknown) => error);
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    clearAnilistCache();
+    expect(isAbortError(await pending)).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
