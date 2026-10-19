@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Dark mode. The page reads the operating system's colour-scheme preference and
+  opens in that theme through `light-dark()` tokens, and a Theme control in the
+  masthead switches between Light and Dark for the session. The choice is
+  deliberately in memory only, so it resets to the system preference on reload
+  and the app stays free of `localStorage` and cookies. The browser chrome's
+  `theme-color` follows the active theme
+
 - An explicit `<meta name="referrer">` (`strict-origin-when-cross-origin`) on
   the page, so the referrer sent to AniList and on any outbound link is the
   same in every browser rather than left to each browser's default
@@ -474,6 +481,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `DETAIL_CONCURRENCY` (no longer needed with batched fetching)
 
 ### Fixed
+
+- Active filter chips and selected text no longer take their foreground from
+  the surface palette. Both used a surface token (`stock-raised`, then
+  `ink-on-strong`) as the text colour on the Press Red fill, which produced
+  dark-on-red text once surfaces invert. They now use a dedicated
+  `ink-on-accent` token, so the selected state stays legible in either theme.
+  The slider thumb's shadow likewise moves to a `shadow-thumb` token so it can
+  darken with the theme instead of staying slate-tinted
 
 - Reason and genre ordering no longer depends on the browser locale. The
   recommendation reasons and the discovery genre list sorted user-visible
