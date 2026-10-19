@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Anime } from "@/models/anime";
 import {
   AnilistError,
+  RateLimitError,
   clearAnilistCache,
   getAnimeBatch,
   getAnimeConnections,
@@ -11,7 +12,12 @@ import {
   normalizeSearchResult,
   searchAnime,
 } from "./anilist";
-import { CACHE_MAX_ENTRIES, CACHE_TTL_MS, REQUEST_TIMEOUT_MS } from "./config";
+import {
+  CACHE_MAX_ENTRIES,
+  CACHE_TTL_MS,
+  RATE_LIMIT_WINDOW_MS,
+  REQUEST_TIMEOUT_MS,
+} from "./config";
 
 beforeEach(() => {
   clearAnilistCache();
@@ -940,5 +946,151 @@ describe("AniList rate limiting", () => {
     await searchAnime("bebop");
     await expect(searchAnime("trigun")).resolves.toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("releases the gate once the reset time passes", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const resetAt = Math.floor((Date.now() + 30_000) / 1000);
+    const fetchMock = stubFetch(
+      jsonResponse(
+        { data: { Page: { media: [media] } } },
+        { headers: { "X-RateLimit-Remaining": "2", "X-RateLimit-Reset": String(resetAt) } },
+      ),
+      dataResponse({ Page: { media: [media] } }),
+    );
+
+    await searchAnime("bebop");
+    await expect(searchAnime("trigun")).rejects.toBeInstanceOf(RateLimitError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(29_999);
+    await expect(searchAnime("trigun")).rejects.toBeInstanceOf(RateLimitError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(searchAnime("trigun")).resolves.toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("recovers from a low budget even without a reset header", async () => {
+    vi.useFakeTimers();
+    const fetchMock = stubFetch(
+      jsonResponse(
+        { data: { Page: { media: [media] } } },
+        { headers: { "X-RateLimit-Remaining": "2" } },
+      ),
+      dataResponse({ Page: { media: [media] } }),
+    );
+
+    await searchAnime("bebop");
+    await expect(searchAnime("trigun")).rejects.toBeInstanceOf(RateLimitError);
+
+    await vi.advanceTimersByTimeAsync(RATE_LIMIT_WINDOW_MS);
+    await expect(searchAnime("trigun")).resolves.toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("clamps a far-future reset so the gate cannot lock indefinitely", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const resetAt = Math.floor(Date.now() / 1000) + 86_400;
+    const fetchMock = stubFetch(
+      jsonResponse(
+        { data: { Page: { media: [media] } } },
+        { headers: { "X-RateLimit-Remaining": "1", "X-RateLimit-Reset": String(resetAt) } },
+      ),
+      dataResponse({ Page: { media: [media] } }),
+    );
+
+    await searchAnime("bebop");
+    await expect(searchAnime("trigun")).rejects.toBeInstanceOf(RateLimitError);
+
+    await vi.advanceTimersByTimeAsync(RATE_LIMIT_WINDOW_MS - 1);
+    await expect(searchAnime("trigun")).rejects.toBeInstanceOf(RateLimitError);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(searchAnime("trigun")).resolves.toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores an empty or unparseable remaining header", async () => {
+    const empty = stubFetch(
+      jsonResponse(
+        { data: { Page: { media: [media] } } },
+        { headers: { "X-RateLimit-Remaining": "" } },
+      ),
+      dataResponse({ Page: { media: [media] } }),
+    );
+
+    await searchAnime("bebop");
+    await expect(searchAnime("trigun")).resolves.toHaveLength(1);
+    expect(empty).toHaveBeenCalledTimes(2);
+
+    clearAnilistCache();
+
+    const unparseable = stubFetch(
+      jsonResponse(
+        { data: { Page: { media: [media] } } },
+        { headers: { "X-RateLimit-Remaining": "soon" } },
+      ),
+      dataResponse({ Page: { media: [media] } }),
+    );
+
+    await searchAnime("bebop");
+    await expect(searchAnime("trigun")).resolves.toHaveLength(1);
+    expect(unparseable).toHaveBeenCalledTimes(2);
+  });
+
+  it("clamps a negative remaining header rather than treating it as healthy", async () => {
+    const fetchMock = stubFetch(
+      jsonResponse(
+        { data: { Page: { media: [media] } } },
+        { headers: { "X-RateLimit-Remaining": "-2" } },
+      ),
+    );
+
+    await searchAnime("bebop");
+    await expect(searchAnime("trigun")).rejects.toBeInstanceOf(RateLimitError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("suppresses connections, batch and discovery while the budget is low", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const resetAt = Math.floor((Date.now() + 30_000) / 1000);
+    const fetchMock = stubFetch(
+      jsonResponse(
+        { data: { Page: { media: [media] } } },
+        { headers: { "X-RateLimit-Remaining": "2", "X-RateLimit-Reset": String(resetAt) } },
+      ),
+    );
+
+    await searchAnime("bebop");
+    await expect(getAnimeConnections(2)).rejects.toBeInstanceOf(RateLimitError);
+    await expect(getAnimeBatch([2])).rejects.toBeInstanceOf(RateLimitError);
+    await expect(
+      getDiscoveryCandidates({
+        genres: ["Action"],
+        formats: [],
+        excludeIds: [1],
+        page: 1,
+        perPage: 50,
+      }),
+    ).rejects.toBeInstanceOf(RateLimitError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("serves a warm cached search while the budget is low", async () => {
+    const fetchMock = stubFetch(
+      jsonResponse(
+        { data: { Page: { media: [media] } } },
+        { headers: { "X-RateLimit-Remaining": "1" } },
+      ),
+    );
+
+    await searchAnime("bebop");
+    await expect(searchAnime("bebop")).resolves.toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -2,7 +2,7 @@
 
 **Host:** Hostinger Business plan (Node.js Web App flow, GitHub auto-deploy)
 **Architecture:** Option A — pure static client-side SPA, no backend
-**Status:** In progress — branches 1–7 landed; Phase 6 hardening sequenced in §13.
+**Status:** In progress — branches 1–8 landed; Phase 6 hardening sequenced in §13.
 Hostinger panel access is unavailable, so every branch except the deploy itself
 proceeds now and deployment is deferred.
 **Date:** 2026-10-15
@@ -634,7 +634,7 @@ Branches 12–14 are optional and may stay deferred.
 | --- | ---------------------------- | -------------------------------------------------------------- | -------- | -------- |
 | 6   | `api/request-safety`         | Request timeouts, real cancellation, `Retry-After` clamping    | Critical | **Done** |
 | 7   | `api/cache-bounds`           | TTL, entry cap + LRU, ABA-safe deletes, clear aborts in flight | Critical | **Done** |
-| 8   | `api/rate-limit-recovery`    | Gate every query kind; recover after `X-RateLimit-Reset`       | High     | Pending  |
+| 8   | `api/rate-limit-recovery`    | Gate every query kind; recover after `X-RateLimit-Reset`       | High     | **Done** |
 | 9   | `api/graceful-degradation`   | Skip bad rows; partial success; multi-error and `null` body    | High     | Pending  |
 | 10  | `fix/deterministic-ordering` | Remove locale-dependent `localeCompare`                        | Medium   | Pending  |
 | 11  | `chore/deploy-hardening`     | Non-fatal `prepare`, pin `engines`, `base`, package name       | Medium   | Pending  |
