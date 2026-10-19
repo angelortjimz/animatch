@@ -461,6 +461,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- The AniList response cache grew without bound for the life of the tab. Every
+  search term and every distinct batch id list stayed resident forever, and a
+  request that never settled pinned its key indefinitely. Entries now expire
+  after `CACHE_TTL_MS` (10 minutes) and the cache is capped at
+  `CACHE_MAX_ENTRIES` (50) with least-recently-used eviction, so a long session
+  cannot accumulate hydrated `Anime` payloads without limit. Both bounds live in
+  `src/api/config.ts` alongside the other tunables. A live entry is never
+  evicted — its callers are still waiting on it — so the cap is a soft ceiling
+  under extreme concurrency
+- Cache eviction is identity-guarded: a superseded or aborted entry can no
+  longer delete the fresh entry that reuses its key when its rejection lands
+  late. This closes an ABA race between an entry that is cleared and a
+  replacement created for the same term before the first settles
+- `clearAnilistCache` now aborts in-flight requests before dropping their
+  entries, instead of orphaning their controllers so they kept retrying unseen
+
 - A stalled AniList request could hang a search or a submit forever. `fetch`
   accepted a caller's signal but nothing created a deadline,
   `getAnimeConnections` discarded its cache's signal, `getDiscoveryCandidates`
