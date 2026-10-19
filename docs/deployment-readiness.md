@@ -2,11 +2,11 @@
 
 **Host:** Hostinger Business plan (Node.js Web App flow, GitHub auto-deploy)
 **Architecture:** Option A — pure static client-side SPA, no backend
-**Status:** In progress — branches 1–8, 10–11 landed; branch 9 pending and
-Phase 6 hardening sequenced in §13.
-Hostinger panel access is unavailable, so every branch except the deploy itself
-proceeds now and deployment is deferred.
-**Date:** 2026-10-15
+**Status:** Ready for first deploy — branches 1–11 landed; the only remaining
+step is connecting the Hostinger panel and confirming the build settings.
+Phase 6 hardening is sequenced in §13.
+Hostinger panel access is available; the site is not yet connected to GitHub.
+**Date:** 2026-10-19
 
 ---
 
@@ -144,7 +144,7 @@ fallback rule is required.
 
 1. Push the prepared branch to `main`.
 2. hPanel → Websites → the site → Dashboard → Connect to GitHub.
-3. Authorize the Hostinger GitHub App for `angelortjimz/anime`.
+3. Authorize the Hostinger GitHub App for `angelortjimz/animatch`.
 4. Review auto-detected build settings against §3.1.
 5. Deploy; inspect the build log on failure.
 6. Verify the live URL, including the smoke tests in §8.2.
@@ -440,12 +440,10 @@ is verified with `pnpm check` before it does.
 Branches 6–14 extend this sequence as **Phase 6 — Hardening** (§13), ordered by
 the urgency of the review findings behind them.
 
-Hostinger panel access is currently unavailable, so the deploy steps in §3.4 —
-connecting GitHub, confirming the build settings, and the first build — are
-deferred. Every branch can still be authored, `pnpm check`-verified and merged
-ahead of that first deploy; nothing in branches 1–5 requires the panel. The
-first live build (and its R1/R2/R3 risks) remains the moment to arrive at with
-`main` already CI-gated and baseline-proven.
+Hostinger panel access is available, but the site is not yet connected to
+GitHub. The deploy steps in §3.4 — connecting GitHub, confirming the build
+settings, and the first build — remain. Every branch through 11 is landed,
+`pnpm check`-verified and CI-green, so `main` is ready for that first build.
 
 **Do not make the Phase 1 change the first deploy.** If the first Hostinger
 build fails on risk R1 (`engines` is a range, not a pin), R2 (corepack versus
@@ -627,7 +625,7 @@ search rate-limit gate (§4.5) can lock the search field permanently.
 
 Ordered by urgency. **Branches 6–9 are correctness and reliability fixes and
 should land before the first deploy.** Branches 10–11 are low-risk hygiene.
-Branches 12–14 are optional and may stay deferred.
+Branches 12 and 13 are optional or blocked; branch 14 is landed.
 
 ### 13.1 Sequence
 
@@ -636,12 +634,12 @@ Branches 12–14 are optional and may stay deferred.
 | 6   | `api/request-safety`         | Request timeouts, real cancellation, `Retry-After` clamping    | Critical | **Done** |
 | 7   | `api/cache-bounds`           | TTL, entry cap + LRU, ABA-safe deletes, clear aborts in flight | Critical | **Done** |
 | 8   | `api/rate-limit-recovery`    | Gate every query kind; recover after `X-RateLimit-Reset`       | High     | **Done** |
-| 9   | `api/graceful-degradation`   | Skip bad rows; partial success; multi-error and `null` body    | High     | Pending  |
+| 9   | `api/graceful-degradation`   | Skip bad rows; partial success; multi-error and `null` body    | High     | **Done** |
 | 10  | `fix/deterministic-ordering` | Remove locale-dependent `localeCompare`                        | Medium   | **Done** |
 | 11  | `chore/deploy-hardening`     | Non-fatal `prepare`, pin `engines`, `base`, package name       | Medium   | **Done** |
 | 12  | `ci/dependency-guard`        | Coverage threshold, `pnpm audit`, Dependabot, axe              | Low      | Deferred |
 | 13  | `site/metadata`              | `canonical`, `og:image`, `twitter:image`                       | Low      | Blocked  |
-| 14  | `ui/dark-mode`               | `prefers-color-scheme` and dynamic `theme-color`               | Low      | Deferred |
+| 14  | `ui/dark-mode`               | `prefers-color-scheme` and dynamic `theme-color`               | Low      | **Done** |
 
 Each branch satisfies §11.4 — `pnpm check` green and a `CHANGELOG.md` entry
 under `[Unreleased]`.
@@ -797,10 +795,11 @@ accessibility check on the rendered app. The dev-only tooling needs approval
 need the production domain and a 1200×630 image, neither of which exists yet.
 Blocked until then.
 
-### 13.10 Branch 14 — `ui/dark-mode` (low, optional)
+### 13.10 Branch 14 — `ui/dark-mode` (done)
 
-Only `prefers-reduced-motion` is honoured; there is no `prefers-color-scheme`
-support, and `theme-color` is hardcoded light (`index.html:10`). Optional.
+The page now honours `prefers-color-scheme` and opens in the matching theme,
+with a Theme control in the masthead for switching for the session, and
+`theme-color` follows the active theme.
 
 ### 13.11 Not planned
 
