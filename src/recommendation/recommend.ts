@@ -1,4 +1,9 @@
-import { getAnimeBatch, getAnimeConnections, getDiscoveryCandidates } from "@/api/anilist";
+import {
+  getAnimeBatch,
+  getAnimeConnections,
+  getDiscoveryCandidates,
+  isAbortError,
+} from "@/api/anilist";
 import type {
   Anime,
   Candidate,
@@ -19,9 +24,16 @@ import { passesPrerequisiteGate } from "./prerequisites";
 import { generateReasons } from "./reasons";
 import { rankCandidates, scoreCandidate } from "./scoring";
 
-async function hydrateCandidates(seeds: CandidateSeed[], selected: Anime[]): Promise<Candidate[]> {
+async function hydrateCandidates(
+  seeds: CandidateSeed[],
+  selected: Anime[],
+  signal?: AbortSignal,
+): Promise<Candidate[]> {
   if (seeds.length === 0) return [];
-  const anime = await getAnimeBatch(seeds.map((seed) => seed.id));
+  const anime = await getAnimeBatch(
+    seeds.map((seed) => seed.id),
+    signal,
+  );
   const byId = new Map(anime.map((item) => [item.id, item]));
   return seeds.flatMap((seed) => {
     const found = byId.get(seed.id);
@@ -34,8 +46,9 @@ async function eligibleFromSeeds(
   selected: Anime[],
   selectedRelations: RelatedAnime[][],
   filters: RecommendationFilters,
+  signal?: AbortSignal,
 ): Promise<Candidate[]> {
-  const hydrated = await hydrateCandidates(seeds, selected);
+  const hydrated = await hydrateCandidates(seeds, selected, signal);
   return hydrated.filter(
     (candidate) =>
       matchesEpisodeLimit(candidate.anime.episodes, filters) &&
@@ -48,6 +61,7 @@ async function topUpPool(
   filters: RecommendationFilters,
   excludeIds: number[],
   shortfall: number,
+  signal?: AbortSignal,
 ): Promise<CandidateSeed[]> {
   const genres = sharedGenres(selected);
   if (genres.length === 0) return [];
@@ -55,13 +69,16 @@ async function topUpPool(
   const discovered: number[] = [];
 
   for (let page = 1; page <= DISCOVERY_MAX_PAGES && discovered.length < shortfall; page += 1) {
-    const rows = await getDiscoveryCandidates({
-      genres,
-      formats: filters.formats,
-      excludeIds: [...seen],
-      page,
-      perPage: DISCOVERY_PER_PAGE,
-    });
+    const rows = await getDiscoveryCandidates(
+      {
+        genres,
+        formats: filters.formats,
+        excludeIds: [...seen],
+        page,
+        perPage: DISCOVERY_PER_PAGE,
+      },
+      signal,
+    );
     for (const row of rows) {
       if (seen.has(row.id) || !matchesEpisodeLimit(row.episodes, filters)) continue;
       seen.add(row.id);
@@ -84,12 +101,15 @@ function uniqueCandidates(candidates: Candidate[]): Candidate[] {
 export async function recommend(
   selected: Anime[],
   filters: RecommendationFilters,
+  signal?: AbortSignal,
 ): Promise<RecommendationResult> {
   const distinctIds = new Set(selected.map((anime) => anime.id)).size;
   if (selected.length !== REQUIRED_SELECTIONS || distinctIds !== REQUIRED_SELECTIONS) {
     throw new Error(`${REQUIRED_SELECTIONS} different anime are required for a recommendation.`);
   }
-  const connections = await Promise.all(selected.map((anime) => getAnimeConnections(anime.id)));
+  const connections = await Promise.all(
+    selected.map((anime) => getAnimeConnections(anime.id, signal)),
+  );
   const selectedRelations = connections.map((connection) => connection.relations);
   const seeds = buildCandidateSeeds(
     selected,
@@ -98,19 +118,25 @@ export async function recommend(
     filters,
   );
   const excludeIds = [...selected.map((anime) => anime.id), ...seeds.map((seed) => seed.id)];
-  const eligible = await eligibleFromSeeds(seeds, selected, selectedRelations, filters);
+  const eligible = await eligibleFromSeeds(seeds, selected, selectedRelations, filters, signal);
 
   let candidates = eligible;
   const shortfall = CANDIDATE_LIMIT - eligible.length;
   if (shortfall > 0) {
     let discovered: CandidateSeed[] = [];
     try {
-      discovered = await topUpPool(selected, filters, excludeIds, shortfall);
+      discovered = await topUpPool(selected, filters, excludeIds, shortfall, signal);
     } catch (error) {
-      if (eligible.length === 0) throw error;
+      if (isAbortError(error) || eligible.length === 0) throw error;
     }
     if (discovered.length > 0) {
-      const extras = await eligibleFromSeeds(discovered, selected, selectedRelations, filters);
+      const extras = await eligibleFromSeeds(
+        discovered,
+        selected,
+        selectedRelations,
+        filters,
+        signal,
+      );
       candidates = uniqueCandidates([...eligible, ...extras]);
     }
   }

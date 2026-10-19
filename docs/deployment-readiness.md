@@ -2,7 +2,7 @@
 
 **Host:** Hostinger Business plan (Node.js Web App flow, GitHub auto-deploy)
 **Architecture:** Option A — pure static client-side SPA, no backend
-**Status:** In progress — branches 1–5 landed; Phase 6 hardening sequenced in §13.
+**Status:** In progress — branches 1–6 landed; Phase 6 hardening sequenced in §13.
 Hostinger panel access is unavailable, so every branch except the deploy itself
 proceeds now and deployment is deferred.
 **Date:** 2026-10-15
@@ -632,7 +632,7 @@ Branches 12–14 are optional and may stay deferred.
 
 | #   | Branch                       | Contents                                                       | Urgency  | Status   |
 | --- | ---------------------------- | -------------------------------------------------------------- | -------- | -------- |
-| 6   | `api/request-safety`         | Request timeouts, real cancellation, `Retry-After` clamping    | Critical | Pending  |
+| 6   | `api/request-safety`         | Request timeouts, real cancellation, `Retry-After` clamping    | Critical | **Done** |
 | 7   | `api/cache-bounds`           | TTL, entry cap + LRU, ABA-safe deletes, clear aborts in flight | Critical | Pending  |
 | 8   | `api/rate-limit-recovery`    | Gate every query kind; recover after `X-RateLimit-Reset`       | High     | Pending  |
 | 9   | `api/graceful-degradation`   | Skip bad rows; partial success; multi-error and `null` body    | High     | Pending  |
@@ -659,9 +659,12 @@ and ignores the HTTP-date form.
 
 **Changes.**
 
-- `src/api/anilist.ts`: give `fetchJson` an internal deadline via
-  `AbortSignal.timeout`, combined with the caller's signal through
-  `AbortSignal.any`, so no request can hang.
+- `src/api/anilist.ts`: give `fetchJson` a per-attempt deadline — an
+  `AbortController` armed by `setTimeout` with a `REQUEST_TIMEOUT_MS` tunable,
+  combining the caller's signal — so no request can hang. A manual deadline was
+  chosen over `AbortSignal.timeout`/`AbortSignal.any` because fake timers cannot
+  drive `AbortSignal.timeout` and the newer `AbortSignal.any` narrows browser
+  support
 - Thread the signal through `getAnimeConnections` and `getDiscoveryCandidates`,
   and expose one from `getAnimeBatch`.
 - Clamp `retryAfterMs` to `[0, 60_000]`; parse the HTTP-date form with

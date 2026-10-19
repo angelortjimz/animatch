@@ -6,10 +6,12 @@ import {
   getAnimeBatch,
   getAnimeConnections,
   getDiscoveryCandidates,
+  isAbortError,
   normalizeAnime,
   normalizeSearchResult,
   searchAnime,
 } from "./anilist";
+import { REQUEST_TIMEOUT_MS } from "./config";
 
 beforeEach(() => {
   clearAnilistCache();
@@ -86,6 +88,18 @@ function signalAwareFetch(
     if (init.signal?.aborted) throw abortError();
     return handler(fetchMock.mock.calls.length, init);
   });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+/** A fetch stub that never resolves, but rejects the moment its signal aborts. */
+function hangingFetch(): ReturnType<typeof vi.fn> {
+  const fetchMock = vi.fn(
+    (_url: string, init: RequestInit) =>
+      new Promise<never>((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () => reject(abortError()), { once: true });
+      }),
+  );
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
@@ -609,6 +623,72 @@ describe("AniList retry backoff", () => {
     expect(ignored).toHaveBeenCalledTimes(2);
     expect((await second).id).toBe(1);
   });
+
+  it("clamps an unreasonably large Retry-After to one minute", async () => {
+    vi.useFakeTimers();
+    const fetchMock = stubFetch(
+      errorResponse(429, { "Retry-After": "1e308" }),
+      dataResponse({ Page: { media: [{ ...media }] } }),
+    );
+
+    const pending = loadAnime(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect((await pending).id).toBe(1);
+  });
+
+  it("accepts an HTTP-date Retry-After", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+    const retryAt = new Date(Date.now() + 2000).toUTCString();
+    const fetchMock = stubFetch(
+      errorResponse(429, { "Retry-After": retryAt }),
+      dataResponse({ Page: { media: [{ ...media }] } }),
+    );
+
+    const pending = loadAnime(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect((await pending).id).toBe(1);
+  });
+
+  it("treats a negative Retry-After as immediate and falls back for an empty one", async () => {
+    vi.useFakeTimers();
+
+    const immediate = stubFetch(
+      errorResponse(429, { "Retry-After": "-5" }),
+      dataResponse({ Page: { media: [{ ...media }] } }),
+    );
+    const first = loadAnime(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(immediate).toHaveBeenCalledTimes(2);
+    expect((await first).id).toBe(1);
+
+    clearAnilistCache();
+
+    const empty = stubFetch(
+      errorResponse(429, { "Retry-After": "" }),
+      dataResponse({ Page: { media: [{ ...media }] } }),
+    );
+    const second = loadAnime(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(empty).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(499);
+    expect(empty).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(empty).toHaveBeenCalledTimes(2);
+    expect((await second).id).toBe(1);
+  });
 });
 
 describe("AniList cancellation", () => {
@@ -669,8 +749,7 @@ describe("AniList cancellation", () => {
 
     controller.abort();
     const outcome = await pending;
-    expect(outcome).toBeInstanceOf(DOMException);
-    expect((outcome as DOMException).name).toBe("AbortError");
+    expect(isAbortError(outcome)).toBe(true);
 
     // No further retries may be scheduled once the last caller has gone.
     await vi.advanceTimersByTimeAsync(5000);
@@ -682,6 +761,64 @@ describe("AniList cancellation", () => {
     await searchAnime("Cowboy  Bebop");
     await searchAnime("  cowboy bebop ");
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("recognises abort-shaped errors without depending on DOMException", () => {
+    expect(isAbortError(Object.assign(new Error("aborted"), { name: "AbortError" }))).toBe(true);
+    expect(isAbortError(new DOMException("aborted", "AbortError"))).toBe(true);
+    expect(isAbortError(new Error("Boom"))).toBe(false);
+    expect(isAbortError(null)).toBe(false);
+    expect(isAbortError("AbortError")).toBe(false);
+  });
+
+  it("bounds a request that never responds with the internal deadline", async () => {
+    vi.useFakeTimers();
+    const fetchMock = hangingFetch();
+
+    const pending = loadAnime(1).catch((error: unknown) => error);
+
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
+    const error = await pending;
+    expect(error).toBeInstanceOf(AnilistError);
+    expect((error as AnilistError).message).not.toMatch(/cancelled/i);
+  });
+
+  it("propagates an abort through the connections, batch and discovery entry points", async () => {
+    const entryPoints: Array<[string, (signal: AbortSignal) => Promise<unknown>]> = [
+      ["connections", (signal) => getAnimeConnections(1, signal)],
+      ["batch", (signal) => getAnimeBatch([1], signal)],
+      [
+        "discovery",
+        (signal) =>
+          getDiscoveryCandidates(
+            { genres: ["Action"], formats: [], excludeIds: [1], page: 1, perPage: 50 },
+            signal,
+          ),
+      ],
+    ];
+
+    for (const [name, call] of entryPoints) {
+      clearAnilistCache();
+      const fetchMock = hangingFetch();
+      const controller = new AbortController();
+      const pending = call(controller.signal).catch((error: unknown) => error);
+      await vi.waitFor(() => expect(fetchMock, name).toHaveBeenCalledTimes(1));
+
+      controller.abort();
+
+      expect(isAbortError(await pending), name).toBe(true);
+      expect(fetchMock, name).toHaveBeenCalledTimes(1);
+    }
   });
 });
 

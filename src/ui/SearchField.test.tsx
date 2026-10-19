@@ -8,10 +8,10 @@ import { SEARCH_DEBOUNCE_MS } from "./config";
 
 const api = vi.hoisted(() => ({ search: vi.fn() }));
 
-vi.mock("@/api/anilist", () => ({
-  SEARCH_MIN_LENGTH: 2,
-  searchAnime: api.search,
-}));
+vi.mock("@/api/anilist", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/api/anilist")>();
+  return { ...actual, SEARCH_MIN_LENGTH: 2, searchAnime: api.search };
+});
 
 const combobox = (): HTMLInputElement => screen.getByRole<HTMLInputElement>("combobox");
 
@@ -112,7 +112,7 @@ describe("SearchField", () => {
 
     cleanup();
 
-    api.search.mockRejectedValue(new DOMException("aborted", "AbortError"));
+    api.search.mockRejectedValue(Object.assign(new Error("aborted"), { name: "AbortError" }));
     const aborted = renderField();
     await search(aborted.input, "bebop");
     expect(screen.queryByText("Search is unavailable. Try again.")).toBeNull();
