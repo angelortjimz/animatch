@@ -555,9 +555,6 @@ function touchEntry(key: string, entry: CacheEntry<unknown>): void {
 
 function evictOverflow(): void {
   if (cache.size <= CACHE_MAX_ENTRIES) return;
-  // Oldest first, so the least recently used entry goes. Live entries are never
-  // evicted: somebody is waiting on them, or they were just created for a
-  // caller that has not subscribed yet.
   for (const [key, entry] of cache) {
     if (entry.subscribers > 0 || !entry.settled) continue;
     cache.delete(key);
@@ -584,8 +581,6 @@ function startEntry<T>(key: string, load: (signal: AbortSignal) => Promise<T>): 
       dropEntry(key, entry);
     },
   );
-  // Every caller may have aborted by the time a shared failure lands; keep the
-  // rejection handled so it never surfaces as an unhandled rejection.
   promise.catch(() => {});
   cache.set(key, entry);
   evictOverflow();
@@ -614,8 +609,6 @@ function cached<T>(
     if (released) return;
     released = true;
     entry.subscribers -= 1;
-    // The request only has value while somebody waits for it: once the last
-    // caller has gone, stop the fetch rather than let it retry unseen.
     if (entry.subscribers <= 0 && !entry.settled) {
       entry.controller.abort();
       dropEntry(key, entry);
