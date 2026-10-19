@@ -11,11 +11,15 @@ const api = vi.hoisted(() => ({
   batch: vi.fn(),
 }));
 
-vi.mock("@/api/anilist", () => ({
-  SEARCH_MIN_LENGTH: 2,
-  searchAnime: api.search,
-  getAnimeBatch: api.batch,
-}));
+vi.mock("@/api/anilist", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/api/anilist")>();
+  return {
+    ...actual,
+    SEARCH_MIN_LENGTH: 2,
+    searchAnime: api.search,
+    getAnimeBatch: api.batch,
+  };
+});
 
 vi.mock("@/recommendation/recommend", () => ({ recommend: vi.fn() }));
 
@@ -252,7 +256,7 @@ describe("App", () => {
     await submit();
 
     expect(screen.getByRole("heading", { name: "Yurei Deco" })).toBeDefined();
-    expect(api.batch).toHaveBeenCalledWith([1, 2, 3]);
+    expect(api.batch).toHaveBeenCalledWith([1, 2, 3], expect.any(AbortSignal));
     expect(recommendMock).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Based on First / Second")).toBeDefined();
   });
@@ -359,12 +363,13 @@ describe("App", () => {
 
     // The cancelled run resolves late; it cannot overwrite the restored answer.
     let releaseStuck: (() => void) | undefined;
-    api.batch.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          releaseStuck = () => resolve([anime(1), anime(2), anime(3)]);
-        }),
-    );
+    let stuckSignal: AbortSignal | undefined;
+    api.batch.mockImplementationOnce((_ids: number[], signal?: AbortSignal) => {
+      stuckSignal = signal;
+      return new Promise((resolve) => {
+        releaseStuck = () => resolve([anime(1), anime(2), anime(3)]);
+      });
+    });
     await flush(() => {
       fireEvent.click(submitButton());
     });
@@ -373,6 +378,7 @@ describe("App", () => {
     await flush(() => {
       fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     });
+    expect(stuckSignal?.aborted).toBe(true);
     expect(screen.getByRole("heading", { name: "Yurei Deco" })).toBeDefined();
     expect(submitButton().disabled).toBe(false);
 
@@ -384,7 +390,11 @@ describe("App", () => {
   });
 
   it("gives up on a request that never returns, with a retry offered", async () => {
-    api.batch.mockImplementation(() => new Promise(() => {}));
+    let deadlineSignal: AbortSignal | undefined;
+    api.batch.mockImplementation((_ids: number[], signal?: AbortSignal) => {
+      deadlineSignal = signal;
+      return new Promise(() => {});
+    });
     recommendMock.mockResolvedValue({ kind: "no-match" } satisfies RecommendationResult);
 
     render(<App />);
@@ -394,6 +404,7 @@ describe("App", () => {
     await flush(async () => {
       await vi.advanceTimersByTimeAsync(SUBMIT_TIMEOUT_MS);
     });
+    expect(deadlineSignal?.aborted).toBe(true);
     expect(
       screen.getByRole("heading", { name: "We could not find a recommendation" }),
     ).toBeDefined();
@@ -616,19 +627,27 @@ describe("App", () => {
     });
 
     it("scores the first request without any narrowing", async () => {
-      expect(recommendMock).toHaveBeenCalledWith(expect.anything(), {
-        formats: [],
-        maxEpisodes: null,
-      });
+      expect(recommendMock).toHaveBeenCalledWith(
+        expect.anything(),
+        {
+          formats: [],
+          maxEpisodes: null,
+        },
+        expect.any(AbortSignal),
+      );
     });
 
     it("passes the chosen filters into the next request", async () => {
       await narrow();
       await submit();
-      expect(recommendMock).toHaveBeenLastCalledWith(expect.anything(), {
-        formats: ["MOVIE"],
-        maxEpisodes: null,
-      });
+      expect(recommendMock).toHaveBeenLastCalledWith(
+        expect.anything(),
+        {
+          formats: ["MOVIE"],
+          maxEpisodes: null,
+        },
+        expect.any(AbortSignal),
+      );
     });
 
     it("passes the chosen episode ceiling into the next request", async () => {
@@ -639,10 +658,14 @@ describe("App", () => {
         fireEvent.change(screen.getByRole("slider"), { target: { value: "30" } });
       });
       await submit();
-      expect(recommendMock).toHaveBeenLastCalledWith(expect.anything(), {
-        formats: [],
-        maxEpisodes: 30,
-      });
+      expect(recommendMock).toHaveBeenLastCalledWith(
+        expect.anything(),
+        {
+          formats: [],
+          maxEpisodes: 30,
+        },
+        expect.any(AbortSignal),
+      );
     });
 
     it("reads a ceiling moved while any length is on, and drops that choice", async () => {
@@ -659,10 +682,14 @@ describe("App", () => {
         false,
       );
       await submit();
-      expect(recommendMock).toHaveBeenLastCalledWith(expect.anything(), {
-        formats: [],
-        maxEpisodes: 30,
-      });
+      expect(recommendMock).toHaveBeenLastCalledWith(
+        expect.anything(),
+        {
+          formats: [],
+          maxEpisodes: 30,
+        },
+        expect.any(AbortSignal),
+      );
     });
 
     it("marks the result stale when a filter changes, without refetching", async () => {

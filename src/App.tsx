@@ -36,6 +36,7 @@ export function App(): JSX.Element {
   const submitRef = useRef<HTMLButtonElement | null>(null);
   const firstFieldRef = useRef<HTMLDivElement | null>(null);
   const runRef = useRef(0);
+  const requestRef = useRef<AbortController | null>(null);
   const slowTimerRef = useRef<number | undefined>(undefined);
   const deadlineRef = useRef<number | undefined>(undefined);
   const previousUiRef = useRef<UiState>({ kind: "idle" });
@@ -99,6 +100,8 @@ export function App(): JSX.Element {
     if (loading) return;
     const runId = runRef.current + 1;
     runRef.current = runId;
+    const controller = new AbortController();
+    requestRef.current = controller;
     previousUiRef.current = ui;
     setUi({ kind: "loading", slow: false });
     slowTimerRef.current = window.setTimeout(() => {
@@ -108,10 +111,16 @@ export function App(): JSX.Element {
     deadlineRef.current = window.setTimeout(() => {
       if (runRef.current !== runId) return;
       runRef.current += 1;
+      controller.abort();
+      requestRef.current = null;
+      window.clearTimeout(slowTimerRef.current);
       setUi({ kind: "error" });
     }, SUBMIT_TIMEOUT_MS);
     try {
-      const detailed = await getAnimeBatch(selected.map((item) => item.id));
+      const detailed = await getAnimeBatch(
+        selected.map((item) => item.id),
+        controller.signal,
+      );
       if (runRef.current !== runId) return;
       if (detailed.length !== selected.length) {
         const missing = selections.findIndex(
@@ -120,7 +129,7 @@ export function App(): JSX.Element {
         setUi({ kind: "unavailable", field: missing >= 0 ? missing + 1 : 1 });
         return;
       }
-      const result = await recommend(detailed, filters);
+      const result = await recommend(detailed, filters, controller.signal);
       if (runRef.current !== runId) return;
       if (result.kind === "recommendation") {
         setScoredSelections([...selections]);
@@ -137,12 +146,15 @@ export function App(): JSX.Element {
       if (runRef.current === runId) {
         window.clearTimeout(slowTimerRef.current);
         window.clearTimeout(deadlineRef.current);
+        if (requestRef.current === controller) requestRef.current = null;
       }
     }
   }
 
   function handleCancel(): void {
     runRef.current += 1;
+    requestRef.current?.abort();
+    requestRef.current = null;
     window.clearTimeout(slowTimerRef.current);
     window.clearTimeout(deadlineRef.current);
     setUi(previousUiRef.current);
@@ -170,6 +182,9 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     return () => {
+      runRef.current += 1;
+      requestRef.current?.abort();
+      requestRef.current = null;
       window.clearTimeout(slowTimerRef.current);
       window.clearTimeout(deadlineRef.current);
     };

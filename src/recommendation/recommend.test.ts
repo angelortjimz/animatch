@@ -292,6 +292,7 @@ describe("recommend with filters", () => {
     await recommend(selected, filters({ formats: ["MOVIE"] }));
     expect(getDiscoveryCandidates).toHaveBeenCalledWith(
       expect.objectContaining({ formats: ["MOVIE"] }),
+      undefined,
     );
   });
 
@@ -299,7 +300,10 @@ describe("recommend with filters", () => {
     const selected = scenario([{ id: 10 }]);
     offer(30);
     await recommend(selected, NO_FILTERS);
-    expect(getDiscoveryCandidates).toHaveBeenCalledWith(expect.objectContaining({ formats: [] }));
+    expect(getDiscoveryCandidates).toHaveBeenCalledWith(
+      expect.objectContaining({ formats: [] }),
+      undefined,
+    );
   });
 
   it("excludes the selections and everything already pooled from the top-up", async () => {
@@ -407,6 +411,14 @@ describe("recommend with filters", () => {
     vi.mocked(getDiscoveryCandidates).mockRejectedValueOnce(new Error("AniList is down"));
     const results = asRecommendation(await recommend(selected, NO_FILTERS));
     expect(results.results.map((item) => item.anime.id)).toEqual([10, 11]);
+  });
+
+  it("propagates a cancellation instead of showing a partial pool", async () => {
+    const selected = scenario([{ id: 10 }]);
+    vi.mocked(getDiscoveryCandidates).mockRejectedValueOnce(
+      Object.assign(new Error("cancelled"), { name: "AbortError" }),
+    );
+    await expect(recommend(selected, NO_FILTERS)).rejects.toThrow(/cancelled/);
   });
 
   it("reports the failure when discovery fails and there is nothing else to show", async () => {

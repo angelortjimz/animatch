@@ -10,6 +10,7 @@ import {
   type DiscoveryCandidate,
   type RelatedAnime,
 } from "@/models/anime";
+import { REQUEST_TIMEOUT_MS, RETRY_AFTER_MAX_MS } from "./config";
 
 const BASE_URL = "https://graphql.anilist.co";
 const SEARCH_LIMIT = 5;
@@ -356,7 +357,44 @@ function toDiscoveryCandidate(media: AnilistMedia): DiscoveryCandidate | null {
 }
 
 function abortError(): Error {
-  return new DOMException("The request was cancelled.", "AbortError");
+  const error = new Error("The request was cancelled.");
+  error.name = "AbortError";
+  return error;
+}
+
+export function isAbortError(error: unknown): boolean {
+  return (
+    typeof error === "object" && error !== null && "name" in error && error.name === "AbortError"
+  );
+}
+
+function timeoutError(): Error {
+  const error = new Error("The request timed out.");
+  error.name = "TimeoutError";
+  return error;
+}
+
+interface DeadlinedSignal {
+  signal: AbortSignal;
+  dispose: () => void;
+}
+
+function withDeadline(signal?: AbortSignal): DeadlinedSignal {
+  const controller = new AbortController();
+  if (signal?.aborted) {
+    controller.abort();
+    return { signal: controller.signal, dispose: () => {} };
+  }
+  const abort = (): void => controller.abort();
+  const timer = setTimeout(() => controller.abort(timeoutError()), REQUEST_TIMEOUT_MS);
+  signal?.addEventListener("abort", abort, { once: true });
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+    },
+  };
 }
 
 function delay(milliseconds: number, signal?: AbortSignal): Promise<void> {
@@ -396,15 +434,50 @@ function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   });
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
 function retryAfterMs(response: Response): number | null {
-  const header = response.headers.get("Retry-After");
-  if (header === null || header.trim() === "") return null;
+  const header = response.headers.get("Retry-After")?.trim();
+  if (!header) return null;
   const seconds = Number(header);
-  return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : null;
+  if (Number.isFinite(seconds)) {
+    return clamp(seconds * 1000, 0, RETRY_AFTER_MAX_MS);
+  }
+  const date = Date.parse(header);
+  if (!Number.isFinite(date)) return null;
+  return clamp(date - Date.now(), 0, RETRY_AFTER_MAX_MS);
 }
 
 function isRetryable(status: number | undefined): boolean {
   return status === 429 || (status ?? 0) >= 500;
+}
+
+interface RawResponse<T> {
+  response: Response;
+  payload: AnilistResponse<T>;
+}
+
+async function requestOnce<T>(
+  query: string,
+  variables: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<RawResponse<T>> {
+  const request = withDeadline(signal);
+  try {
+    const response = await fetch(BASE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, variables }),
+      signal: request.signal,
+    });
+    trackRateLimit(response);
+    const payload = (await response.json()) as AnilistResponse<T>;
+    return { response, payload };
+  } finally {
+    request.dispose();
+  }
 }
 
 async function fetchJson<T>(
@@ -412,18 +485,12 @@ async function fetchJson<T>(
   variables: Record<string, unknown>,
   signal?: AbortSignal,
 ): Promise<T> {
+  if (signal?.aborted) throw abortError();
   let lastError: unknown;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
     const backoff = 500 * 2 ** attempt;
     try {
-      const response = await fetch(BASE_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, variables }),
-        signal,
-      });
-      trackRateLimit(response);
-      const payload = (await response.json()) as AnilistResponse<T>;
+      const { response, payload } = await requestOnce<T>(query, variables, signal);
       const graphQlError = payload.errors?.[0];
       const status = response.ok ? (graphQlError?.status ?? 200) : response.status;
       if (response.ok && !graphQlError) {
@@ -440,7 +507,7 @@ async function fetchJson<T>(
         await delay(retryAfterMs(response) ?? backoff, signal);
       }
     } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") throw error;
+      if (signal?.aborted) throw abortError();
       if (error instanceof AnilistError && !isRetryable(error.status)) throw error;
       lastError = error;
       if (attempt < MAX_RETRIES) await delay(backoff, signal);
@@ -543,55 +610,64 @@ export async function searchAnime(
   );
 }
 
-export function getAnimeConnections(id: number): Promise<AnimeConnections> {
-  return cached(`connections:${id}`, async () => {
-    const response = await fetchJson<AnilistMediaResponse>(CONNECTIONS_QUERY, {
-      id,
-      perPage: RECOMMENDATION_LIMIT,
-    });
-    const media = response.Media;
-    if (!media) throw new AnilistError("AniList returned no anime details.");
-    const relationEdges = media.relations?.edges;
-    if (!Array.isArray(relationEdges)) {
-      throw new AnilistError("AniList returned invalid relation data.");
-    }
-    const relations = relationEdges
-      .map((edge) => toRelatedAnime(edge, id))
-      .filter((relation): relation is RelatedAnime => relation !== null);
-    const recommendationEdges = media.recommendations?.edges ?? [];
-    const recommendations = recommendationEdges
-      .map((edge) => toCommunityRecommendation(edge, id))
-      .filter(
-        (recommendation): recommendation is CommunityRecommendation => recommendation !== null,
+export function getAnimeConnections(id: number, signal?: AbortSignal): Promise<AnimeConnections> {
+  return cached(
+    `connections:${id}`,
+    async (requestSignal) => {
+      const response = await fetchJson<AnilistMediaResponse>(
+        CONNECTIONS_QUERY,
+        { id, perPage: RECOMMENDATION_LIMIT },
+        requestSignal,
       );
-    return { relations, recommendations };
-  });
+      const media = response.Media;
+      if (!media) throw new AnilistError("AniList returned no anime details.");
+      const relationEdges = media.relations?.edges;
+      if (!Array.isArray(relationEdges)) {
+        throw new AnilistError("AniList returned invalid relation data.");
+      }
+      const relations = relationEdges
+        .map((edge) => toRelatedAnime(edge, id))
+        .filter((relation): relation is RelatedAnime => relation !== null);
+      const recommendationEdges = media.recommendations?.edges ?? [];
+      const recommendations = recommendationEdges
+        .map((edge) => toCommunityRecommendation(edge, id))
+        .filter(
+          (recommendation): recommendation is CommunityRecommendation => recommendation !== null,
+        );
+      return { relations, recommendations };
+    },
+    signal,
+  );
 }
 
-export function getAnimeBatch(ids: number[]): Promise<Anime[]> {
+export function getAnimeBatch(ids: number[], signal?: AbortSignal): Promise<Anime[]> {
   const uniqueIds = [...new Set(ids)];
   if (uniqueIds.length === 0) return Promise.resolve([]);
   const key = `batch:${[...uniqueIds].sort((a, b) => a - b).join(",")}`;
-  return cached(key, async (signal) => {
-    const anime: Anime[] = [];
-    for (let offset = 0; offset < uniqueIds.length; offset += BATCH_LIMIT) {
-      const chunk = uniqueIds.slice(offset, offset + BATCH_LIMIT);
-      const response = await fetchJson<AnilistPageResponse>(
-        BATCH_QUERY,
-        {
-          ids: chunk,
-          page: 1,
-          perPage: chunk.length,
-        },
-        signal,
-      );
-      const media = response.Page?.media;
-      if (!Array.isArray(media))
-        throw new AnilistError("AniList returned an invalid batch response.");
-      anime.push(...media.map(normalizeAnime));
-    }
-    return anime;
-  });
+  return cached(
+    key,
+    async (requestSignal) => {
+      const anime: Anime[] = [];
+      for (let offset = 0; offset < uniqueIds.length; offset += BATCH_LIMIT) {
+        const chunk = uniqueIds.slice(offset, offset + BATCH_LIMIT);
+        const response = await fetchJson<AnilistPageResponse>(
+          BATCH_QUERY,
+          {
+            ids: chunk,
+            page: 1,
+            perPage: chunk.length,
+          },
+          requestSignal,
+        );
+        const media = response.Page?.media;
+        if (!Array.isArray(media))
+          throw new AnilistError("AniList returned an invalid batch response.");
+        anime.push(...media.map(normalizeAnime));
+      }
+      return anime;
+    },
+    signal,
+  );
 }
 
 export interface DiscoveryRequest {
@@ -604,6 +680,7 @@ export interface DiscoveryRequest {
 
 export async function getDiscoveryCandidates(
   request: DiscoveryRequest,
+  signal?: AbortSignal,
 ): Promise<DiscoveryCandidate[]> {
   if (request.genres.length === 0 || request.excludeIds.length === 0) return [];
   const variables: Record<string, unknown> = {
@@ -614,7 +691,7 @@ export async function getDiscoveryCandidates(
   };
 
   if (request.formats.length > 0) variables.formatIn = request.formats;
-  const response = await fetchJson<AnilistPageResponse>(DISCOVERY_QUERY, variables);
+  const response = await fetchJson<AnilistPageResponse>(DISCOVERY_QUERY, variables, signal);
   const media = response.Page?.media;
   if (!Array.isArray(media))
     throw new AnilistError("AniList returned an invalid discovery response.");

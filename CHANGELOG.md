@@ -461,6 +461,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- A stalled AniList request could hang a search or a submit forever. `fetch`
+  accepted a caller's signal but nothing created a deadline,
+  `getAnimeConnections` discarded its cache's signal, `getDiscoveryCandidates`
+  took none, and the submit deadline and Cancel only changed UI state while the
+  fetches kept retrying. Every request attempt now carries a 15s internal
+  deadline, `recommend()` forwards a signal to the connections, batch and
+  discovery calls, and Cancel, the 45s submit deadline and unmount abort the
+  in-flight controller. An abort is no longer swallowed by the discovery
+  top-up's partial-pool fallback
+- `Retry-After` is clamped to one minute and now understands the HTTP-date
+  form. A header such as `1e308` previously produced `Infinity`, which
+  `setTimeout` silently capped at roughly 24.8 days, and an HTTP date was
+  discarded entirely, falling back to exponential backoff
+- Abort detection is structural (`isAbortError`) instead of an
+  `instanceof DOMException` check, so the API layer stays free of DOM globals
+  and a cancellation raised as a plain `Error` is still recognised
+
 - The search response cache was unreachable from the UI. `cached()` bypassed the
   cache whenever an `AbortSignal` was present, and `SearchField` always passes
   one, so every debounce tick was a guaranteed network call. The cache now holds

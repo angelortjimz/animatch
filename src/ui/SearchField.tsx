@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type JSX, type KeyboardEvent } from "react";
-import { SEARCH_MIN_LENGTH, searchAnime } from "@/api/anilist";
+import { SEARCH_MIN_LENGTH, isAbortError, searchAnime } from "@/api/anilist";
 import type { AnimeSearchResult } from "@/models/anime";
 import { SEARCH_DEBOUNCE_MS } from "./config";
 import { metaLine } from "./format";
@@ -117,7 +117,7 @@ export function SearchField({
       setActiveIndex(results.findIndex((match) => !takenIds.has(match.id)));
       setStatus(results.length ? "Choose a result" : "No anime found");
     } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
+      if (isAbortError(error)) return;
       setStatus("Search is unavailable. Try again.");
       setSearchFailed(true);
     }
