@@ -260,22 +260,24 @@ export function App(): JSX.Element {
         onCancel={loading ? handleCancel : undefined}
         onRetry={ui.kind === "error" && canSubmit ? () => void runSubmit() : undefined}
       />
-      <footer className="credit">
-        Anime data and cover art from{" "}
-        <a
-          className="anilist-link"
-          href="https://anilist.co"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          AniList
-        </a>
-        . Recommendations are generated on your device and are not affiliated with AniList.
+      <footer className="site-footer">
+        <p className="credit">
+          Anime data and cover art from{" "}
+          <a
+            className="anilist-link"
+            href="https://anilist.co"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            AniList
+          </a>
+          . Recommendations are generated on your device and are not affiliated with AniList.
+        </p>
+        <SocialLinks
+          githubUrl="https://github.com/angelortjimz/animatch"
+          linkedinUrl="https://www.linkedin.com/in/%C3%A1ngel-ortega-jim%C3%A9nez-320221279/"
+        />
       </footer>
-      <SocialLinks
-        githubUrl="https://github.com/angelortjimz/animatch"
-        linkedinUrl="https://www.linkedin.com/in/%C3%A1ngel-ortega-jim%C3%A9nez-320221279/"
-      />
     </main>
   );
 }

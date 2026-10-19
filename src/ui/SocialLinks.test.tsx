@@ -39,6 +39,6 @@ describe("SocialLinks", () => {
     render(
       <SocialLinks githubUrl="https://github.com/example" linkedinUrl="https://linkedin.com" />,
     );
-    expect(screen.getByRole("complementary", { name: "Social links" })).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Social links" })).toBeTruthy();
   });
 });

@@ -422,6 +422,15 @@ describe("App", () => {
     expect(within(credit).getByText(/not affiliated with AniList/)).toBeDefined();
   });
 
+  it("places social links inside the page footer", () => {
+    render(<App />);
+
+    const footer = screen.getByRole("contentinfo");
+    expect(within(footer).getByRole("navigation", { name: "Social links" })).toBeDefined();
+    expect(within(footer).getByRole("link", { name: /GitHub profile/i })).toBeDefined();
+    expect(within(footer).getByRole("link", { name: /LinkedIn profile/i })).toBeDefined();
+  });
+
   it("replaces the previous result with progress while re-running", async () => {
     api.batch.mockResolvedValue([anime(1), anime(2), anime(3)]);
     recommendMock.mockResolvedValue({

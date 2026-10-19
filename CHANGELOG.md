@@ -212,6 +212,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Social links moved from a fixed floating pill in the bottom-right corner into
+  the site footer. They now sit beside the AniList credit on desktop and stack
+  beneath it on mobile, so they no longer obscure page content or overlap
+  controls on small screens
+
 - `engines.node` is pinned to `22.x` instead of the open-ended `>=20.19.0`
   range, so the Hostinger build receives the concrete version it expects.
   CI already ran Node 22, so the workflow is unchanged
