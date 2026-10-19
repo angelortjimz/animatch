@@ -165,7 +165,6 @@
   }
 
   .masthead {
-    max-width: 690px;
     padding: var(--space-2) 0 var(--space-7);
   }
 
@@ -185,6 +184,7 @@
   .theme-switch {
     display: inline-flex;
     flex: none;
+    margin-left: auto;
     border: 1px solid var(--border);
   }
 
@@ -227,6 +227,7 @@
   }
 
   .display-title {
+    max-width: 690px;
     margin-bottom: var(--space-4);
     color: var(--ink-strong);
     font-family: var(--font-serif);
