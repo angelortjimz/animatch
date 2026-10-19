@@ -144,7 +144,7 @@ fallback rule is required.
 
 1. Push the prepared branch to `main`.
 2. hPanel → Websites → the site → Dashboard → Connect to GitHub.
-3. Authorize the Hostinger GitHub App for `angelortjimz/anime`.
+3. Authorize the Hostinger GitHub App for `angelortjimz/animatch`.
 4. Review auto-detected build settings against §3.1.
 5. Deploy; inspect the build log on failure.
 6. Verify the live URL, including the smoke tests in §8.2.
