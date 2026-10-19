@@ -7,6 +7,8 @@ import { recommend } from "@/recommendation/recommend";
 import { FilterBar } from "@/ui/FilterBar";
 import { SearchField } from "@/ui/SearchField";
 import { ResultRegion } from "@/ui/ResultRegion";
+import { ThemeSwitch } from "@/ui/ThemeSwitch";
+import { useTheme } from "@/ui/theme";
 import { SUBMIT_SLOW_MS, SUBMIT_TIMEOUT_MS } from "@/ui/config";
 
 const FIELD_COUNT = 3;
@@ -21,6 +23,7 @@ interface RestorePoint {
 }
 
 export function App(): JSX.Element {
+  const { preference, setPreference } = useTheme();
   const [selections, setSelections] = useState<(AnimeSearchResult | null)[]>(() =>
     Array<AnimeSearchResult | null>(FIELD_COUNT).fill(null),
   );
@@ -197,7 +200,10 @@ export function App(): JSX.Element {
   return (
     <main className="page">
       <header className="masthead">
-        <p className="eyebrow">Anime discovery engine</p>
+        <div className="masthead-top">
+          <p className="eyebrow">Anime discovery engine</p>
+          <ThemeSwitch preference={preference} onChange={setPreference} />
+        </div>
         <h1 className="display-title">What should you watch next?</h1>
         <p className="lead">
           Pick three anime you enjoyed. We will find one adjacent discovery, not the next franchise
