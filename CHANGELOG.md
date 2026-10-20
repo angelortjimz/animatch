@@ -212,6 +212,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `README.md` is condensed where it was describing one host rather than the
+  project. The Deployment section now covers only what a fork needs — the
+  static build output, the absence of backend or environment configuration, and
+  the relative asset base — while the Hostinger-specific hPanel settings and
+  first-deploy risks remain in `docs/deployment-readiness.md`. Run locally
+  gained its Node and pnpm prerequisites, How it works now reflects the
+  discovery top-up, the prerequisite gate and the filter ordering, and Notes
+  names the MIT licence and the background documents in `docs/`
+
 - Social links moved from a fixed floating pill in the bottom-right corner into
   the site footer. They now sit beside the AniList credit on desktop and stack
   beneath it on mobile, so they no longer obscure page content or overlap

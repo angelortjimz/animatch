@@ -4,6 +4,10 @@ A small, deterministic anime recommendation app powered by the AniList API. Pick
 
 ## Run locally
 
+Requires Node `22.x` and pnpm; `corepack enable` provides the pnpm version
+pinned in `package.json`. `pnpm install` also points Git at the repository's
+`.githooks`.
+
 Install dependencies, then start the Vite development server:
 
 ```bash
@@ -33,50 +37,25 @@ That runs everything in sequence. Individually:
 
 ## Deployment
 
-AniMatch is a pure static, client-only SPA. It has no backend, database, or
-server runtime; the AniList API is called directly from the browser. It deploys
-to Hostinger's Business plan through the Node.js Web App flow with GitHub
-auto-deploy.
+AniMatch is a static, client-only SPA. `pnpm build` writes `dist/`, which any
+static host can serve. There is no backend, database, server runtime, or
+environment variable to configure; the AniList API is called directly from the
+browser.
 
-Configure the app in hPanel as follows:
-
-| Setting          | Value   | Note                                       |
-| ---------------- | ------- | ------------------------------------------ |
-| Application type | `vite`  | Detected from `package.json`               |
-| Node version     | `22`    | Matches the pinned `engines.node` (`22.x`) |
-| Build script     | `build` | The script name, not `pnpm build`          |
-| Output directory | `dist`  | Matches the Vite default                   |
-| Entry file       | (empty) | Static site, no Node server runs           |
-| Package manager  | `pnpm`  | Auto-detected from `pnpm-lock.yaml`        |
-| Root directory   | `/`     |                                            |
-
-Merging to `main` triggers the Hostinger build. `public_html/` and `hbuilds/`
-are overwritten on every redeploy, so never hand-edit the deployed files —
-source changes go through GitHub.
-
-The build sets `base: "./"`, so asset and favicon URLs are relative and the
-static output works from any deploy path. The `prepare` script that installs
-the local Git hooks is non-fatal, so `pnpm install` still succeeds in a build
-directory that has no `.git`.
-
-First-deploy risks to watch:
-
-- `packageManager` (`pnpm@12.6.0`) may trip corepack if that version is
-  unavailable; if the install fails, set the package manager to `pnpm`
-  explicitly.
-- `pnpm-workspace.yaml` sets `allowBuilds: esbuild: false`; a different pnpm
-  major may not recognise the key. It builds locally today — escalate only if
-  the Hostinger build fails.
+The build uses relative asset paths (`base: "./"`), so the output also works
+from a subdirectory rather than only a domain root.
 
 ## How it works
 
 1. **Search** — `src/api/anilist.ts` queries AniList's GraphQL API, with debounced, cancellable search and an in-memory response cache.
-2. **Connect** — for each of the three selections it fetches franchise relations and community recommendations.
-3. **Score** — eligible related titles become candidates. Each is scored on relation strength plus metadata similarity (genre, theme, format, main studio, release era).
-4. **Recommend** — the highest-scoring candidate wins, with a deterministic tie-break chain so identical inputs always produce the same answer.
+2. **Connect** — for each of the three picks it fetches franchise relations and community recommendations, and tops the pool back up to 24 with a genre-based discovery query when those leave it short. Format and episode filters are applied while collecting, before ranking.
+3. **Score** — eligible related titles become candidates, scored on relation strength plus metadata similarity (genre, theme, format, main studio, release era). A sequel or later season is only eligible when the series it follows is one of your picks.
+4. **Recommend** — up to 24 candidates are ranked, with a deterministic tie-break chain so identical inputs always produce the same order. The top match is shown and the rest are available through re-roll.
 
 Tunables — scoring weights, limits, reason caps — live in `src/recommendation/config.ts`.
 
 ## Notes
 
 The app stores selections only in memory. It does not use accounts, a database, a backend, or an AI service. See [AGENTS.md](AGENTS.md) for the conventions this repository follows.
+
+AniMatch is MIT licensed. Background documents live in [`docs/`](docs): the design system, the product record, and the original plan.
